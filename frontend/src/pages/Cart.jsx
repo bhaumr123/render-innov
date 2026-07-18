@@ -95,9 +95,26 @@ export default function Cart() {
 
       <aside className="bg-surface border border-warm rounded-lg p-6 h-fit">
         <div className="font-heading text-xl font-semibold mb-4">Order summary</div>
-        {cart.items.length > 0 && remaining > 0 && (
-          <div className="text-xs text-sage bg-sage/10 border border-sage/20 rounded-md p-2 mb-4">
-            Add <span className="font-semibold">₹{remaining.toFixed(2)}</span> more for complimentary shipping.
+        {cart.items.length > 0 && (
+          <div className="mb-4" data-testid="free-shipping-progress">
+            {remaining > 0 ? (
+              <>
+                <div className="text-xs text-sage mb-2">
+                  Add <span className="font-semibold">₹{remaining.toFixed(2)}</span> more for complimentary shipping.
+                </div>
+                <div className="h-1.5 bg-parchment rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-sage transition-[width] duration-500 ease-out"
+                    style={{ width: `${Math.min(100, (cart.subtotal / shippingCfg.free_threshold) * 100)}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-sage bg-sage/10 border border-sage/20 rounded-md px-3 py-2">
+                <span className="text-base">✓</span>
+                <span>You've unlocked <span className="font-semibold">complimentary shipping</span>.</span>
+              </div>
+            )}
           </div>
         )}
         <div className="text-sm space-y-2">
