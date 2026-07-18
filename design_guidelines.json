@@ -1,0 +1,165 @@
+{
+  "theme": "light",
+  "typography": {
+    "headings": {
+      "font_family": "Work Sans",
+      "weights": ["600", "700"],
+      "usage": "Used for page titles, category names, product titles on detail pages.",
+      "styles": "Tight tracking (tracking-tight), high contrast."
+    },
+    "body": {
+      "font_family": "IBM Plex Sans",
+      "weights": ["400", "500"],
+      "usage": "Used for product descriptions, reviews, meta info, prices.",
+      "styles": "Highly legible at small sizes, dense layout support."
+    },
+    "scale": {
+      "h1": "text-2xl sm:text-3xl font-bold tracking-tight text-gray-900",
+      "h2": "text-xl sm:text-2xl font-semibold tracking-tight text-gray-900",
+      "h3": "text-lg font-semibold text-gray-900",
+      "body": "text-sm text-gray-700",
+      "small": "text-xs text-gray-500",
+      "price": "text-xl font-bold text-gray-900"
+    }
+  },
+  "colors": {
+    "primary": {
+      "name": "Navy Blue",
+      "value": "#232F3E",
+      "usage": "Global header background, main structural elements."
+    },
+    "accent": {
+      "name": "Amazon Orange",
+      "value": "#FF9900",
+      "usage": "Primary CTAs (Add to Cart, Checkout), badges, highlight elements."
+    },
+    "interactive": {
+      "name": "Link Blue",
+      "value": "#007185",
+      "usage": "Text links, secondary interactive elements."
+    },
+    "background": {
+      "name": "Soft Gray",
+      "value": "#F3F3F3",
+      "usage": "Main page background to contrast with white product cards."
+    },
+    "surface": {
+      "name": "White",
+      "value": "#FFFFFF",
+      "usage": "Product cards, detail sections, checkout forms."
+    },
+    "text": {
+      "primary": "#0F1111",
+      "secondary": "#565959"
+    },
+    "status": {
+      "danger": "#B12704",
+      "success": "#067D62",
+      "warning": "#FFA41C"
+    }
+  },
+  "visual_enhancers": {
+    "borders": "1px solid #D5D9D9 for structural lines and card boundaries. Sharp or slight roundness (rounded or rounded-md max).",
+    "shadows": "Minimal. Use flat design mostly. Subtle shadow-sm on hover for product cards.",
+    "hover_states": "Interactive text turns darker or adds underline. Buttons slightly darken (e.g., hover:bg-orange-500).",
+    "textures": "None. Keep it flat, clean, and highly functional. Focus on image clarity."
+  },
+  "components": {
+    "header": {
+      "style": "Solid Navy Blue background (#232F3E) with White text. Do not use transparent background. Includes logo, global search bar, and cart badge.",
+      "search_bar": "White background, clean borders, prominent search icon, category dropdown on the left side."
+    },
+    "product_card": {
+      "style": "White background, thin subtle border (border-gray-200), max 4px border-radius. Dense layout.",
+      "content": "Image max height 200px (object-contain), Title (2 lines max truncate), Rating stars, Price, Prime-like badge, Add to Cart button."
+    },
+    "button": {
+      "primary": "bg-[#FF9900] hover:bg-[#F3A847] text-black font-semibold rounded-full px-4 py-2 text-sm",
+      "secondary": "bg-[#F7CA00] hover:bg-[#F0C14B] text-black font-semibold rounded-full px-4 py-2 text-sm border border-[#A2A6AC]",
+      "ghost": "hover:bg-gray-100 text-[#007185] font-medium"
+    },
+    "sidebar": {
+      "style": "Used for categories and filters. Compact checkboxes, text-sm, clear hierarchical lists."
+    }
+  },
+  "grids_and_layouts": {
+    "global_container": "max-w-screen-2xl mx-auto px-4 md:px-6",
+    "product_grid": "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4",
+    "spacing": "Tight spacing for high density. p-2 to p-4 for cards. gap-4 for grids.",
+    "page_structure": "Sidebar on left (filters) + Main content on right (product grid) for listing pages."
+  },
+  "motion": {
+    "philosophy": "Utilitarian and fast. No unnecessary animations.",
+    "transitions": "Fast color transitions on buttons (150ms ease). No heavy scaling or 3D rotations."
+  },
+  "accessibility": {
+    "contrast": "Strict APCA/WCAG AA contrast. Black text on orange is readable. White on Navy is highly readable.",
+    "focus": "Clear focus rings (focus:ring-2 focus:ring-offset-2 focus:ring-[#FF9900])",
+    "aria": "Use aria-labels for search buttons, cart icons, and image thumbnails."
+  },
+  "media": {
+    "images": {
+      "aspect_ratio": "Square (1:1) for product images to maintain grid consistency. Object-contain to prevent cropping.",
+      "background": "White background for product images preferred."
+    }
+  },
+  "image_urls": {
+    "hero_banners": [
+      {
+        "url": "https://images.pexels.com/photos/6214155/pexels-photo-6214155.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Laptop displaying 'Shop now' with vibrant shopping bags on glass table outdoors.",
+        "category": "hero"
+      },
+      {
+        "url": "https://images.pexels.com/photos/6956903/pexels-photo-6956903.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "A laptop surrounded by shopping bags and boxes on a blue sofa, ideal for online shopping themes.",
+        "category": "hero"
+      }
+    ],
+    "products": [
+      {
+        "url": "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwyfHx3aXJlbGVzcyUyMGhlYWRwaG9uZXMlMjBwcm9kdWN0fGVufDB8fHx8MTc4NDM4NDI5Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "black wireless headphones on white table",
+        "category": "Electronics"
+      },
+      {
+        "url": "https://images.pexels.com/photos/3081173/pexels-photo-3081173.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "JBL headphones resting on a black Nike bag, showcasing sleek and modern design.",
+        "category": "Electronics"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1519558260268-cde7e03a0152?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwzfHxzbWFydCUyMGhvbWUlMjBkZXZpY2UlMjBwcm9kdWN0fGVufDB8fHx8MTc4NDM4NDI5Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "turned-on charcoal Google Home Mini and smartphone",
+        "category": "Smart Home"
+      },
+      {
+        "url": "https://images.pexels.com/photos/22307556/pexels-photo-22307556.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "A sleek smartphone with modern smart home devices on a minimalist gray background.",
+        "category": "Smart Home"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build a robust layout using the provided High-Density Utility Grid strategy. Prioritize functionality, clarity, and density.",
+    "Do NOT use HTML `<select>` for dropdowns; always use Shadcn UI Select component.",
+    "Keep product listings dense. Use pure HTML/Tailwind for cards for maximum control over 1px borders and grid alignments.",
+    "Implement a realistic top navigation bar with a solid Navy Blue background. Do NOT make the header transparent.",
+    "Buttons should follow pill-shaped (rounded-full) designs with the Amazon Orange accent.",
+    "Do NOT use the Inter font. Use Work Sans for headings and IBM Plex Sans for body text.",
+    "Apply `data-testid` to all clickable elements, forms, and core functionalities for robust testing.",
+    "Ensure 'Add to Cart' functionality provides visual feedback via Sonner toast notifications.",
+    "Do NOT center align the app container. Ensure standard left-to-right reading flow.",
+    "Create a mock checkout flow that simulates real steps (address, payment, order confirmation).",
+    "Install icon library: `yarn add @phosphor-icons/react` or `yarn add lucide-react` for utilitarian ecommerce icons."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Create new components that match the style and conventions of existing components when needed.",
+    "Examine existing components to understand the project's component patterns before creating new ones.",
+    "Use `sonner` for toasts. Sonner component should be located in `/app/frontend/src/components/ui/sonner.js` or `.jsx`.",
+    "Never use placeholder URLs (via.placeholder.com). Use the provided image URLs.",
+    "All interactive and key informational elements MUST include `data-testid` attribute.",
+    "Ensure modern pill-shaped or sharp buttons are used based on the exact specifications.",
+    "Apply specific transition properties like `transition-colors` or `transition-transform` instead of `transition-all`."
+  ]
+}
