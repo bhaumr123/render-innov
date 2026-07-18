@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import WishlistButton from "@/components/WishlistButton";
 
 export default function ProductCard({ product }) {
   const { addToCart } = useCart();
@@ -41,7 +42,8 @@ export default function ProductCard({ product }) {
       data-testid={`product-card-${product.id}`}
       className="group bg-surface border border-warm rounded-lg overflow-hidden flex flex-col hover:shadow-sm transition-shadow"
     >
-      <div className="aspect-square bg-parchment/40 flex items-center justify-center p-4 overflow-hidden">
+      <div className="aspect-square bg-parchment/40 flex items-center justify-center p-4 overflow-hidden relative">
+        <WishlistButton productId={product.id} size={16} className="absolute top-2 right-2 h-8 w-8" />
         <img
           src={product.image_url}
           alt={product.title}

@@ -20,15 +20,44 @@ export default function Checkout() {
   const [placing, setPlacing] = useState(false);
   const [shippingCfg, setShippingCfg] = useState({ flat_fee: 6.99, free_threshold: 75 });
   const [razorpayCfg, setRazorpayCfg] = useState({ enabled: false, key_id: "" });
+  const [couponInput, setCouponInput] = useState("");
+  const [couponApplied, setCouponApplied] = useState(null); // { code, discount }
+  const [couponError, setCouponError] = useState("");
 
   useEffect(() => {
     api.get("/config/shipping").then((r) => setShippingCfg(r.data));
     api.get("/config/razorpay").then((r) => setRazorpayCfg(r.data));
   }, []);
 
-  const shipping = cart.subtotal === 0 ? 0 : (cart.subtotal >= shippingCfg.free_threshold ? 0 : shippingCfg.flat_fee);
-  const tax = +(cart.subtotal * 0.05).toFixed(2);
-  const total = +(cart.subtotal + tax + shipping).toFixed(2);
+  const discount = couponApplied?.discount || 0;
+  const discountedSubtotal = Math.max(0, +(cart.subtotal - discount).toFixed(2));
+  const shipping = discountedSubtotal === 0 ? 0 : (discountedSubtotal >= shippingCfg.free_threshold ? 0 : shippingCfg.flat_fee);
+  const tax = +(discountedSubtotal * 0.05).toFixed(2);
+  const total = +(discountedSubtotal + tax + shipping).toFixed(2);
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponError("");
+    try {
+      const { data } = await api.post("/coupons/validate", { code });
+      if (data.valid) {
+        setCouponApplied({ code: data.code, discount: data.discount });
+        toast.success(`Coupon applied · ₹${data.discount.toFixed(2)} off`);
+      } else {
+        setCouponApplied(null);
+        setCouponError(data.reason || "Invalid coupon");
+      }
+    } catch (e) {
+      setCouponError(formatApiErrorDetail(e.response?.data?.detail) || "Could not validate coupon");
+    }
+  };
+
+  const removeCoupon = () => {
+    setCouponApplied(null);
+    setCouponInput("");
+    setCouponError("");
+  };
 
   const validate = () => {
     if (!address.full_name || !address.street || !address.city || !address.zip) {
@@ -45,7 +74,11 @@ export default function Checkout() {
   const placeMockOrder = async () => {
     setPlacing(true);
     try {
-      const { data } = await api.post("/orders/checkout", { address, payment_method: payment });
+      const { data } = await api.post("/orders/checkout", {
+        address,
+        payment_method: payment,
+        coupon_code: couponApplied?.code || "",
+      });
       await refresh();
       toast.success("Order placed · thank you!");
       navigate(`/order-confirmation/${data.id}`, { state: { order: data } });
@@ -65,7 +98,11 @@ export default function Checkout() {
         setPlacing(false);
         return;
       }
-      const { data } = await api.post("/orders/create-razorpay", { address, payment_method: "razorpay" });
+      const { data } = await api.post("/orders/create-razorpay", {
+        address,
+        payment_method: "razorpay",
+        coupon_code: couponApplied?.code || "",
+      });
 
       const options = {
         key: data.key_id,
@@ -224,11 +261,58 @@ export default function Checkout() {
 
       <aside className="bg-surface border border-warm rounded-lg p-6 h-fit">
         <div className="font-heading text-xl font-semibold mb-4">Summary</div>
+
+        {/* Coupon */}
+        <div className="mb-4">
+          {couponApplied ? (
+            <div className="flex items-center justify-between bg-sage/10 border border-sage/30 rounded-md px-3 py-2 text-sm">
+              <div>
+                <div className="font-heading font-semibold text-ink">{couponApplied.code}</div>
+                <div className="text-xs text-sage">−₹{couponApplied.discount.toFixed(2)} applied</div>
+              </div>
+              <button
+                onClick={removeCoupon}
+                data-testid="chk-remove-coupon"
+                className="text-xs text-muted-warm hover:text-terracotta"
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="text-[11px] tracking-widest uppercase text-muted-warm mb-1">Promo code</div>
+              <div className="flex gap-2">
+                <Input
+                  data-testid="chk-coupon-input"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="WELCOME10"
+                  className="h-9 text-sm"
+                />
+                <button
+                  onClick={applyCoupon}
+                  data-testid="chk-apply-coupon"
+                  className="text-xs bg-ink text-cream rounded-full px-4 hover:bg-terracotta transition-colors"
+                >
+                  Apply
+                </button>
+              </div>
+              {couponError && <div className="text-xs text-terracotta mt-1" data-testid="chk-coupon-error">{couponError}</div>}
+            </>
+          )}
+        </div>
+
         <div className="text-sm space-y-2 mb-5">
           <div className="flex justify-between"><span className="text-muted-warm">Items</span><span>₹{cart.subtotal.toFixed(2)}</span></div>
+          {couponApplied && (
+            <div className="flex justify-between text-sage">
+              <span>Discount ({couponApplied.code})</span>
+              <span data-testid="chk-discount">−₹{discount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-warm">Shipping</span>
-            <span>{shipping === 0 && cart.subtotal > 0 ? <span className="text-sage">Free</span> : `₹${shipping.toFixed(2)}`}</span>
+            <span>{shipping === 0 && discountedSubtotal > 0 ? <span className="text-sage">Free</span> : `₹${shipping.toFixed(2)}`}</span>
           </div>
           <div className="text-[11px] text-muted-warm">
             Flat ₹{shippingCfg.flat_fee.toFixed(2)} shipping · Free above ₹{shippingCfg.free_threshold.toFixed(0)}

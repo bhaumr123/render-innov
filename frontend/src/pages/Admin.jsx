@@ -23,13 +23,43 @@ const emptyForm = {
 export default function Admin() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [coupons, setCoupons] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
+  const [couponForm, setCouponForm] = useState({ code: "", discount_type: "percent", value: "", min_subtotal: 0, max_uses: 0, active: true });
 
   const loadProducts = () => api.get("/products?limit=200").then((r) => setProducts(r.data.items || []));
   const loadOrders = () => api.get("/admin/orders").then((r) => setOrders(r.data.orders || []));
+  const loadCoupons = () => api.get("/admin/coupons").then((r) => setCoupons(r.data.coupons || []));
 
-  useEffect(() => { loadProducts(); loadOrders(); }, []);
+  useEffect(() => { loadProducts(); loadOrders(); loadCoupons(); }, []);
+
+  const submitCoupon = async (e) => {
+    e.preventDefault();
+    const body = {
+      code: couponForm.code.trim().toUpperCase(),
+      discount_type: couponForm.discount_type,
+      value: parseFloat(couponForm.value),
+      min_subtotal: parseFloat(couponForm.min_subtotal || 0),
+      max_uses: parseInt(couponForm.max_uses || 0),
+      active: !!couponForm.active,
+    };
+    try {
+      await api.post("/admin/coupons", body);
+      toast.success(`Coupon ${body.code} created`);
+      setCouponForm({ code: "", discount_type: "percent", value: "", min_subtotal: 0, max_uses: 0, active: true });
+      loadCoupons();
+    } catch (e) {
+      toast.error("Could not create coupon");
+    }
+  };
+
+  const removeCoupon = async (id) => {
+    if (!window.confirm("Delete this coupon?")) return;
+    await api.delete(`/admin/coupons/${id}`);
+    toast.success("Deleted");
+    loadCoupons();
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -200,6 +230,7 @@ export default function Admin() {
         <TabsList>
           <TabsTrigger value="products" data-testid="admin-tab-products">Products</TabsTrigger>
           <TabsTrigger value="orders" data-testid="admin-tab-orders">Orders</TabsTrigger>
+          <TabsTrigger value="coupons" data-testid="admin-tab-coupons">Coupons</TabsTrigger>
         </TabsList>
 
         <TabsContent value="products" className="mt-6 grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-6">
@@ -344,6 +375,83 @@ export default function Admin() {
                 ))}
                 {orders.length === 0 && (
                   <tr><td colSpan={5} className="py-8 text-center text-muted-warm">No orders yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="coupons" className="mt-6 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
+          <form onSubmit={submitCoupon} className="bg-surface border border-warm rounded-lg p-5 space-y-3 h-fit" data-testid="admin-coupon-form">
+            <h2 className="font-heading text-lg font-semibold">New coupon</h2>
+            <div>
+              <Label>Code</Label>
+              <Input data-testid="admin-coupon-code" value={couponForm.code} onChange={(e) => setCouponForm({ ...couponForm, code: e.target.value.toUpperCase() })} placeholder="WELCOME10" required />
+            </div>
+            <div>
+              <Label>Discount type</Label>
+              <Select value={couponForm.discount_type} onValueChange={(v) => setCouponForm({ ...couponForm, discount_type: v })}>
+                <SelectTrigger data-testid="admin-coupon-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="percent">Percent %</SelectItem>
+                  <SelectItem value="flat">Flat ₹ off</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Value</Label>
+                <Input data-testid="admin-coupon-value" type="number" step="0.01" value={couponForm.value} onChange={(e) => setCouponForm({ ...couponForm, value: e.target.value })} required />
+                <div className="text-[10px] text-muted-warm mt-1">
+                  {couponForm.discount_type === "percent" ? "e.g. 10 = 10% off" : "e.g. 50 = ₹50 off"}
+                </div>
+              </div>
+              <div>
+                <Label>Min subtotal (₹)</Label>
+                <Input data-testid="admin-coupon-min" type="number" value={couponForm.min_subtotal} onChange={(e) => setCouponForm({ ...couponForm, min_subtotal: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>Max redemptions (0 = unlimited)</Label>
+              <Input data-testid="admin-coupon-max" type="number" value={couponForm.max_uses} onChange={(e) => setCouponForm({ ...couponForm, max_uses: e.target.value })} />
+            </div>
+            <button
+              type="submit"
+              data-testid="admin-coupon-save"
+              className="w-full bg-ink text-cream text-sm font-medium rounded-full py-2.5 hover:bg-terracotta transition-colors"
+            >
+              Create coupon
+            </button>
+          </form>
+
+          <div className="bg-surface border border-warm rounded-lg p-5">
+            <h2 className="font-heading text-lg font-semibold mb-3">All coupons ({coupons.length})</h2>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-warm text-left text-[11px] uppercase tracking-widest text-muted-warm">
+                  <th className="py-2">Code</th>
+                  <th>Discount</th>
+                  <th>Min</th>
+                  <th>Used</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {coupons.map((c) => (
+                  <tr key={c.id} className="border-b border-warm/60">
+                    <td className="py-3 font-mono font-semibold">{c.code}</td>
+                    <td>{c.discount_type === "percent" ? `${c.value}%` : `₹${c.value.toFixed(2)}`}</td>
+                    <td>₹{c.min_subtotal.toFixed(0)}</td>
+                    <td className="text-xs">{c.uses}{c.max_uses ? ` / ${c.max_uses}` : ""}</td>
+                    <td className="text-right">
+                      <button data-testid={`admin-coupon-del-${c.id}`} onClick={() => removeCoupon(c.id)} className="text-terracotta hover:text-ink inline-flex items-center gap-1">
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {coupons.length === 0 && (
+                  <tr><td colSpan={5} className="py-8 text-center text-muted-warm">No coupons yet.</td></tr>
                 )}
               </tbody>
             </table>

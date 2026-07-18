@@ -6,6 +6,8 @@ import { useCart } from "@/context/CartContext";
 import api from "@/lib/api";
 import { LOGO } from "@/lib/assets";
 import DotClock from "@/components/DotClock";
+import { useWishlist } from "@/context/WishlistContext";
+import { Heart } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
@@ -14,6 +16,7 @@ import {
 export default function Header() {
   const { user, logout } = useAuth();
   const { itemCount } = useCart();
+  const { count: wishlistCount } = useWishlist();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [categories, setCategories] = useState([]);
@@ -73,6 +76,7 @@ export default function Header() {
               {c}
             </Link>
           ))}
+          <Link to="/about" data-testid="nav-about" className="text-ink hover:text-terracotta transition-colors">Our story</Link>
         </nav>
 
         {/* Right */}
@@ -116,6 +120,23 @@ export default function Header() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Link
+            to="/wishlist"
+            data-testid="header-wishlist-link"
+            className="relative p-2 rounded-full hover:bg-parchment transition-colors"
+            aria-label="Wishlist"
+          >
+            <Heart size={20} className="text-ink" style={wishlistCount > 0 ? { fill: "#DC7238", color: "#DC7238" } : undefined} />
+            {wishlistCount > 0 && (
+              <span
+                data-testid="header-wishlist-count"
+                className="absolute -top-0.5 -right-0.5 bg-terracotta text-white font-dot text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center tabular-nums"
+              >
+                {String(wishlistCount).padStart(2, "0")}
+              </span>
+            )}
+          </Link>
 
           <Link
             to="/cart"

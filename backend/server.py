@@ -141,6 +141,7 @@ class CartItemOut(BaseModel):
 class CheckoutInput(BaseModel):
     address: dict
     payment_method: str = "mock"
+    coupon_code: str = ""
 
 
 # ---------- Auth dependency ----------
@@ -516,6 +517,7 @@ async def list_all_orders(_: dict = Depends(require_admin)):
 class RazorpayCreateInput(BaseModel):
     address: dict
     payment_method: str = "razorpay"
+    coupon_code: str = ""
 
 
 class RazorpayVerifyInput(BaseModel):
@@ -540,9 +542,18 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
     if not items:
         raise HTTPException(status_code=400, detail="Cart is empty")
     subtotal = sum((i["unit_price"] * i["quantity"]) for i in items if i["product"])
-    tax = round(subtotal * 0.05, 2)
-    shipping = _shipping_for(subtotal)
-    total = round(subtotal + tax + shipping, 2)
+    discount = 0.0
+    coupon_applied = None
+    if payload.coupon_code:
+        val = await _validate_coupon(payload.coupon_code, subtotal)
+        if not val.get("valid"):
+            raise HTTPException(status_code=400, detail=val.get("reason", "Invalid coupon"))
+        discount = float(val["discount"])
+        coupon_applied = val["code"]
+    discounted_subtotal = max(0.0, round(subtotal - discount, 2))
+    tax = round(discounted_subtotal * 0.05, 2)
+    shipping = _shipping_for(discounted_subtotal)
+    total = round(discounted_subtotal + tax + shipping, 2)
     amount_paise = int(round(total * 100))
 
     # Persist internal pending order first so we can bind to razorpay_order_id
@@ -559,6 +570,8 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
         "address": payload.address,
         "payment_method": "razorpay",
         "subtotal": round(subtotal, 2),
+        "discount": discount,
+        "coupon_code": coupon_applied,
         "tax": tax,
         "shipping": shipping,
         "total": total,
@@ -583,6 +596,8 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
 
     await db.orders.update_one({"_id": res.inserted_id},
                                {"$set": {"razorpay_order_id": rzp_order["id"]}})
+    if coupon_applied:
+        await db.coupons.update_one({"code": coupon_applied}, {"$inc": {"uses": 1}})
 
     return {
         "order_id": our_order_id,
@@ -638,6 +653,9 @@ async def verify_razorpay(payload: RazorpayVerifyInput, user: dict = Depends(get
 
 # ---------- Reviews (verified purchasers only) ----------
 class ReviewIn(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    title: str = Field(max_length=120, default="")
+    comment: str = Field(max_length=2000, default="")
     rating: int = Field(ge=1, le=5)
     title: str = Field(max_length=120, default="")
     comment: str = Field(max_length=2000, default="")
@@ -726,6 +744,189 @@ async def create_review(product_id: str, payload: ReviewIn, user: dict = Depends
     return doc
 
 
+# ---------- Razorpay webhook ----------
+@api_router.post("/webhooks/razorpay")
+async def razorpay_webhook(request: Request):
+    secret = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+    if not secret:
+        raise HTTPException(status_code=503, detail="Webhook secret not configured")
+    body = await request.body()
+    sig = request.headers.get("X-Razorpay-Signature", "")
+    expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, sig):
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+    try:
+        import json as _json
+        payload = _json.loads(body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad payload")
+
+    event = payload.get("event", "")
+    if event in ("payment.captured", "order.paid"):
+        rzp_order_id = (
+            payload.get("payload", {}).get("payment", {}).get("entity", {}).get("order_id")
+            or payload.get("payload", {}).get("order", {}).get("entity", {}).get("id")
+        )
+        rzp_payment_id = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("id")
+        if rzp_order_id:
+            o = await db.orders.find_one({"razorpay_order_id": rzp_order_id})
+            if o and o.get("status") != "confirmed":
+                await db.orders.update_one(
+                    {"_id": o["_id"]},
+                    {"$set": {
+                        "status": "confirmed",
+                        "razorpay_payment_id": rzp_payment_id or o.get("razorpay_payment_id"),
+                        "paid_at": datetime.now(timezone.utc).isoformat(),
+                        "confirmed_via": "webhook",
+                    }},
+                )
+                await db.carts.update_one({"user_id": o["user_id"]}, {"$set": {"items": []}}, upsert=True)
+    return {"ok": True, "event": event}
+
+
+# ---------- Wishlist ----------
+class WishlistItemIn(BaseModel):
+    product_id: str
+
+
+@api_router.get("/wishlist")
+async def get_wishlist(user: dict = Depends(get_current_user)):
+    doc = await db.wishlists.find_one({"user_id": user["id"]}) or {"product_ids": []}
+    ids = doc.get("product_ids", [])
+    products = []
+    for pid in ids:
+        try:
+            p = await db.products.find_one({"_id": ObjectId(pid)})
+            if p:
+                products.append(product_doc_to_out(p))
+        except Exception:
+            continue
+    return {"product_ids": ids, "products": products}
+
+
+@api_router.post("/wishlist/toggle")
+async def toggle_wishlist(payload: WishlistItemIn, user: dict = Depends(get_current_user)):
+    doc = await db.wishlists.find_one({"user_id": user["id"]}) or {"product_ids": []}
+    ids = list(doc.get("product_ids", []))
+    if payload.product_id in ids:
+        ids.remove(payload.product_id)
+        in_wishlist = False
+    else:
+        ids.append(payload.product_id)
+        in_wishlist = True
+    await db.wishlists.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"product_ids": ids, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"product_ids": ids, "in_wishlist": in_wishlist}
+
+
+# ---------- Coupons ----------
+class CouponIn(BaseModel):
+    code: str
+    discount_type: str  # "percent" | "flat"
+    value: float
+    min_subtotal: float = 0
+    max_uses: int = 0  # 0 = unlimited
+    active: bool = True
+
+
+def _coupon_out(doc: dict) -> dict:
+    return {
+        "id": str(doc["_id"]),
+        "code": doc.get("code", "").upper(),
+        "discount_type": doc.get("discount_type", "percent"),
+        "value": float(doc.get("value", 0)),
+        "min_subtotal": float(doc.get("min_subtotal", 0)),
+        "max_uses": int(doc.get("max_uses", 0)),
+        "uses": int(doc.get("uses", 0)),
+        "active": bool(doc.get("active", True)),
+        "created_at": doc.get("created_at", ""),
+    }
+
+
+def _compute_discount(coupon: dict, subtotal: float) -> float:
+    if not coupon:
+        return 0.0
+    dt = coupon.get("discount_type", "percent")
+    val = float(coupon.get("value", 0))
+    if dt == "percent":
+        return round(subtotal * val / 100, 2)
+    return round(min(val, subtotal), 2)
+
+
+async def _validate_coupon(code: str, subtotal: float) -> dict:
+    code = (code or "").strip().upper()
+    if not code:
+        return {"valid": False, "reason": "No code"}
+    c = await db.coupons.find_one({"code": code})
+    if not c:
+        return {"valid": False, "reason": "Coupon not found"}
+    if not c.get("active", True):
+        return {"valid": False, "reason": "Coupon is inactive"}
+    if c.get("max_uses", 0) and c.get("uses", 0) >= c["max_uses"]:
+        return {"valid": False, "reason": "Coupon has been fully redeemed"}
+    if subtotal < float(c.get("min_subtotal", 0)):
+        return {"valid": False, "reason": f"Minimum subtotal ₹{c['min_subtotal']:.2f} required"}
+    discount = _compute_discount(c, subtotal)
+    return {"valid": True, "code": code, "discount": discount,
+            "discount_type": c.get("discount_type"), "value": c.get("value")}
+
+
+@api_router.post("/coupons/validate")
+async def validate_coupon(payload: dict, user: dict = Depends(get_current_user)):
+    code = (payload.get("code") or "").strip()
+    items = await _get_cart_items(user["id"])
+    subtotal = sum((i["unit_price"] * i["quantity"]) for i in items if i["product"])
+    res = await _validate_coupon(code, subtotal)
+    return res
+
+
+@api_router.get("/admin/coupons")
+async def admin_list_coupons(_: dict = Depends(require_admin)):
+    cursor = db.coupons.find({}).sort([("created_at", -1)])
+    out = []
+    async for c in cursor:
+        out.append(_coupon_out(c))
+    return {"coupons": out}
+
+
+@api_router.post("/admin/coupons")
+async def admin_create_coupon(payload: CouponIn, _: dict = Depends(require_admin)):
+    code = payload.code.strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="Code required")
+    if payload.discount_type not in ("percent", "flat"):
+        raise HTTPException(status_code=400, detail="Invalid discount_type")
+    doc = {
+        "code": code,
+        "discount_type": payload.discount_type,
+        "value": float(payload.value),
+        "min_subtotal": float(payload.min_subtotal),
+        "max_uses": int(payload.max_uses),
+        "uses": 0,
+        "active": bool(payload.active),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        res = await db.coupons.insert_one(doc)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Coupon code already exists")
+    doc["_id"] = res.inserted_id
+    return _coupon_out(doc)
+
+
+@api_router.delete("/admin/coupons/{coupon_id}")
+async def admin_delete_coupon(coupon_id: str, _: dict = Depends(require_admin)):
+    try:
+        oid = ObjectId(coupon_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    await db.coupons.delete_one({"_id": oid})
+    return {"ok": True}
+
+
 # ---------- Root ----------
 @api_router.get("/")
 async def root():
@@ -749,6 +950,8 @@ async def startup_event():
     await db.products.create_index("category")
     await db.orders.create_index("user_id")
     await db.reviews.create_index([("product_id", 1), ("user_id", 1)], unique=True)
+    await db.coupons.create_index("code", unique=True)
+    await db.wishlists.create_index("user_id", unique=True)
     # seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@shop.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
