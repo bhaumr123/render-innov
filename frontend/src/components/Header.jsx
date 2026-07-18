@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import api from "@/lib/api";
 import { LOGO } from "@/lib/assets";
+import DotClock from "@/components/DotClock";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
@@ -32,10 +33,20 @@ export default function Header() {
 
   return (
     <header className="w-full sticky top-0 z-40 bg-cream/95 backdrop-blur-sm border-b border-warm">
-      {/* Announcement strip */}
-      <div className="bg-ink text-cream text-xs tracking-widest uppercase">
-        <div className="max-w-screen-xl mx-auto px-4 py-1.5 text-center">
-          Complimentary shipping on orders above ₹75 · Free returns within 14 days
+      {/* Announcement strip — Nothing-OS style ticker with dot-matrix numerals */}
+      <div className="bg-ink text-cream text-[11px]">
+        <div className="max-w-screen-xl mx-auto px-4 py-1.5 flex items-center gap-4">
+          <DotClock className="hidden sm:inline-flex text-cream/90" />
+          <div className="flex-1 text-center tracking-widest uppercase">
+            Complimentary shipping on orders above ₹75 · Free returns within 14 days
+          </div>
+          <div className="hidden md:inline-flex items-center gap-2 font-dot text-cream/70 tabular-nums">
+            <span>IWI</span>
+            <span className="opacity-40">/</span>
+            <span data-testid="header-cart-count-dot">{String(itemCount).padStart(2, "0")}</span>
+            <span className="opacity-40">·</span>
+            <span>EN·IN</span>
+          </div>
         </div>
       </div>
 
@@ -115,9 +126,9 @@ export default function Header() {
             {itemCount > 0 && (
               <span
                 data-testid="header-cart-count"
-                className="absolute -top-0.5 -right-0.5 bg-terracotta text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center"
+                className="absolute -top-0.5 -right-0.5 bg-terracotta text-white font-dot text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center tabular-nums"
               >
-                {itemCount}
+                {String(itemCount).padStart(2, "0")}
               </span>
             )}
           </Link>
