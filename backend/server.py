@@ -8,7 +8,10 @@ import os
 import logging
 import uuid
 import bcrypt
+import hmac
+import hashlib
 import jwt
+import razorpay
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Annotated
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
@@ -64,10 +67,20 @@ def create_refresh_token(user_id: str) -> str:
 
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
-    response.set_cookie("access_token", access_token, httponly=True, secure=False,
+    secure = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
+    response.set_cookie("access_token", access_token, httponly=True, secure=secure,
                         samesite="lax", max_age=60 * 60 * 24, path="/")
-    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=False,
+    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=secure,
                         samesite="lax", max_age=60 * 60 * 24 * 7, path="/")
+
+
+# ---------- Razorpay ----------
+def get_razorpay_client() -> Optional["razorpay.Client"]:
+    key_id = os.environ.get("RAZORPAY_KEY_ID", "")
+    key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
+    if not key_id or not key_secret:
+        return None
+    return razorpay.Client(auth=(key_id, key_secret))
 
 
 # ---------- Models ----------
@@ -499,6 +512,220 @@ async def list_all_orders(_: dict = Depends(require_admin)):
     return {"orders": out}
 
 
+# ---------- Razorpay payments ----------
+class RazorpayCreateInput(BaseModel):
+    address: dict
+    payment_method: str = "razorpay"
+
+
+class RazorpayVerifyInput(BaseModel):
+    order_id: str  # our DB order id
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+@api_router.get("/config/razorpay")
+async def get_razorpay_public_config():
+    key_id = os.environ.get("RAZORPAY_KEY_ID", "")
+    return {"key_id": key_id, "enabled": bool(key_id and os.environ.get("RAZORPAY_KEY_SECRET"))}
+
+
+@api_router.post("/orders/create-razorpay")
+async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depends(get_current_user)):
+    client_rzp = get_razorpay_client()
+    if client_rzp is None:
+        raise HTTPException(status_code=503, detail="Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.")
+    items = await _get_cart_items(user["id"])
+    if not items:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+    subtotal = sum((i["unit_price"] * i["quantity"]) for i in items if i["product"])
+    tax = round(subtotal * 0.05, 2)
+    shipping = _shipping_for(subtotal)
+    total = round(subtotal + tax + shipping, 2)
+    amount_paise = int(round(total * 100))
+
+    # Persist internal pending order first so we can bind to razorpay_order_id
+    order = {
+        "user_id": user["id"],
+        "items": [{
+            "product_id": i["product_id"],
+            "title": i["product"]["title"] if i["product"] else "",
+            "price": i["unit_price"],
+            "quantity": i["quantity"],
+            "variant_label": i.get("variant_label", ""),
+            "image_url": i["product"]["image_url"] if i["product"] else "",
+        } for i in items],
+        "address": payload.address,
+        "payment_method": "razorpay",
+        "subtotal": round(subtotal, 2),
+        "tax": tax,
+        "shipping": shipping,
+        "total": total,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "order_number": "IWI-" + uuid.uuid4().hex[:10].upper(),
+    }
+    res = await db.orders.insert_one(order)
+    our_order_id = str(res.inserted_id)
+
+    try:
+        rzp_order = client_rzp.order.create({
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": order["order_number"][:40],
+            "payment_capture": 1,
+            "notes": {"internal_order_id": our_order_id, "user_email": user["email"]},
+        })
+    except Exception as e:
+        await db.orders.delete_one({"_id": res.inserted_id})
+        raise HTTPException(status_code=502, detail=f"Razorpay order creation failed: {str(e)}")
+
+    await db.orders.update_one({"_id": res.inserted_id},
+                               {"$set": {"razorpay_order_id": rzp_order["id"]}})
+
+    return {
+        "order_id": our_order_id,
+        "order_number": order["order_number"],
+        "amount": amount_paise,
+        "currency": "INR",
+        "razorpay_order_id": rzp_order["id"],
+        "key_id": os.environ.get("RAZORPAY_KEY_ID", ""),
+    }
+
+
+@api_router.post("/orders/verify-razorpay")
+async def verify_razorpay(payload: RazorpayVerifyInput, user: dict = Depends(get_current_user)):
+    key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
+    if not key_secret:
+        raise HTTPException(status_code=503, detail="Razorpay is not configured")
+    # HMAC verification
+    body = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}".encode("utf-8")
+    expected = hmac.new(key_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, payload.razorpay_signature):
+        # mark failed
+        try:
+            oid = ObjectId(payload.order_id)
+            await db.orders.update_one({"_id": oid, "user_id": user["id"]},
+                                       {"$set": {"status": "payment_failed"}})
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail="Invalid payment signature")
+
+    try:
+        oid = ObjectId(payload.order_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid order id")
+    o = await db.orders.find_one({"_id": oid, "user_id": user["id"]})
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    await db.orders.update_one(
+        {"_id": oid},
+        {"$set": {
+            "status": "confirmed",
+            "razorpay_payment_id": payload.razorpay_payment_id,
+            "razorpay_signature": payload.razorpay_signature,
+            "paid_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    # empty cart on successful payment
+    await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": []}}, upsert=True)
+    o = await db.orders.find_one({"_id": oid})
+    o["id"] = str(o["_id"])
+    o.pop("_id", None)
+    return o
+
+
+# ---------- Reviews (verified purchasers only) ----------
+class ReviewIn(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    title: str = Field(max_length=120, default="")
+    comment: str = Field(max_length=2000, default="")
+
+
+async def _has_purchased(user_id: str, product_id: str) -> bool:
+    return await db.orders.find_one({
+        "user_id": user_id,
+        "status": "confirmed",
+        "items.product_id": product_id,
+    }) is not None
+
+
+async def _recompute_product_rating(product_id: str):
+    try:
+        oid = ObjectId(product_id)
+    except Exception:
+        return
+    cursor = db.reviews.find({"product_id": product_id})
+    total, count = 0.0, 0
+    async for r in cursor:
+        total += float(r.get("rating", 0))
+        count += 1
+    avg = round(total / count, 2) if count > 0 else 0
+    await db.products.update_one({"_id": oid}, {"$set": {"rating": avg, "reviews_count": count}})
+
+
+@api_router.get("/products/{product_id}/reviews")
+async def list_reviews(product_id: str):
+    cursor = db.reviews.find({"product_id": product_id}).sort([("created_at", -1)])
+    reviews = []
+    async for r in cursor:
+        reviews.append({
+            "id": str(r["_id"]),
+            "product_id": r["product_id"],
+            "user_id": r.get("user_id"),
+            "user_name": r.get("user_name", "Customer"),
+            "rating": r.get("rating"),
+            "title": r.get("title", ""),
+            "comment": r.get("comment", ""),
+            "created_at": r.get("created_at"),
+        })
+    return {"reviews": reviews}
+
+
+@api_router.get("/products/{product_id}/reviews/eligibility")
+async def review_eligibility(product_id: str, user: dict = Depends(get_current_user)):
+    purchased = await _has_purchased(user["id"], product_id)
+    existing = await db.reviews.find_one({"product_id": product_id, "user_id": user["id"]})
+    return {
+        "purchased": purchased,
+        "already_reviewed": existing is not None,
+        "can_review": purchased and existing is None,
+    }
+
+
+@api_router.post("/products/{product_id}/reviews")
+async def create_review(product_id: str, payload: ReviewIn, user: dict = Depends(get_current_user)):
+    # product must exist
+    try:
+        prod_oid = ObjectId(product_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid product id")
+    prod = await db.products.find_one({"_id": prod_oid})
+    if not prod:
+        raise HTTPException(status_code=404, detail="Product not found")
+    # must have purchased
+    if not await _has_purchased(user["id"], product_id):
+        raise HTTPException(status_code=403, detail="Only verified purchasers can review this product")
+    # one per user per product
+    if await db.reviews.find_one({"product_id": product_id, "user_id": user["id"]}):
+        raise HTTPException(status_code=400, detail="You have already reviewed this product")
+    doc = {
+        "product_id": product_id,
+        "user_id": user["id"],
+        "user_name": user.get("name") or "Customer",
+        "rating": payload.rating,
+        "title": payload.title.strip(),
+        "comment": payload.comment.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    res = await db.reviews.insert_one(doc)
+    await _recompute_product_rating(product_id)
+    doc["id"] = str(res.inserted_id)
+    doc.pop("_id", None)
+    return doc
+
+
 # ---------- Root ----------
 @api_router.get("/")
 async def root():
@@ -510,7 +737,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=[o.strip() for o in os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',') if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -521,6 +748,7 @@ async def startup_event():
     await db.users.create_index("email", unique=True)
     await db.products.create_index("category")
     await db.orders.create_index("user_id")
+    await db.reviews.create_index([("product_id", 1), ("user_id", 1)], unique=True)
     # seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@shop.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")

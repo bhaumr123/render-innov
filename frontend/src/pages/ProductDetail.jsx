@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { toast } from "sonner";
-import { Leaf, Package, ShieldCheck, ChevronLeft } from "lucide-react";
+import { Leaf, Package, ShieldCheck, ChevronLeft, Star } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import Reviews from "@/components/Reviews";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -149,6 +150,8 @@ export default function ProductDetail() {
           </div>
         </div>
       </div>
+
+      <Reviews productId={p.id} />
     </div>
   );
 }

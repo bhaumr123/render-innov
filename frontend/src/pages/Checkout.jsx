@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
-import api from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import api, { formatApiErrorDetail } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { loadRazorpay } from "@/lib/razorpay";
 
 export default function Checkout() {
   const { cart, refresh } = useCart();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [address, setAddress] = useState({
     full_name: "", street: "", city: "", state: "", zip: "", country: "India", phone: "",
@@ -16,31 +19,110 @@ export default function Checkout() {
   const [payment, setPayment] = useState("mock_card");
   const [placing, setPlacing] = useState(false);
   const [shippingCfg, setShippingCfg] = useState({ flat_fee: 6.99, free_threshold: 75 });
+  const [razorpayCfg, setRazorpayCfg] = useState({ enabled: false, key_id: "" });
 
   useEffect(() => {
     api.get("/config/shipping").then((r) => setShippingCfg(r.data));
+    api.get("/config/razorpay").then((r) => setRazorpayCfg(r.data));
   }, []);
 
   const shipping = cart.subtotal === 0 ? 0 : (cart.subtotal >= shippingCfg.free_threshold ? 0 : shippingCfg.flat_fee);
   const tax = +(cart.subtotal * 0.05).toFixed(2);
   const total = +(cart.subtotal + tax + shipping).toFixed(2);
 
-  const placeOrder = async () => {
+  const validate = () => {
     if (!address.full_name || !address.street || !address.city || !address.zip) {
       toast.error("Please complete the shipping address");
-      return;
+      return false;
     }
-    if (cart.items.length === 0) return toast.error("Cart is empty");
+    if (cart.items.length === 0) {
+      toast.error("Cart is empty");
+      return false;
+    }
+    return true;
+  };
+
+  const placeMockOrder = async () => {
     setPlacing(true);
     try {
       const { data } = await api.post("/orders/checkout", { address, payment_method: payment });
       await refresh();
       toast.success("Order placed · thank you!");
       navigate(`/order-confirmation/${data.id}`, { state: { order: data } });
-    } catch {
-      toast.error("Failed to place order");
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Failed to place order");
     } finally {
       setPlacing(false);
+    }
+  };
+
+  const placeRazorpayOrder = async () => {
+    setPlacing(true);
+    try {
+      const ok = await loadRazorpay();
+      if (!ok) {
+        toast.error("Could not load Razorpay. Check your internet connection.");
+        setPlacing(false);
+        return;
+      }
+      const { data } = await api.post("/orders/create-razorpay", { address, payment_method: "razorpay" });
+
+      const options = {
+        key: data.key_id,
+        amount: data.amount,
+        currency: data.currency,
+        name: "Innovation Window India",
+        description: `Order ${data.order_number}`,
+        order_id: data.razorpay_order_id,
+        prefill: {
+          name: user?.name || address.full_name,
+          email: user?.email || "",
+          contact: address.phone || "",
+        },
+        notes: { order_number: data.order_number },
+        theme: { color: "#DC7238" },
+        handler: async (rsp) => {
+          try {
+            const { data: verified } = await api.post("/orders/verify-razorpay", {
+              order_id: data.order_id,
+              razorpay_order_id: rsp.razorpay_order_id,
+              razorpay_payment_id: rsp.razorpay_payment_id,
+              razorpay_signature: rsp.razorpay_signature,
+            });
+            await refresh();
+            toast.success("Payment successful · thank you!");
+            navigate(`/order-confirmation/${verified.id}`, { state: { order: verified } });
+          } catch (err) {
+            toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Payment verification failed");
+          } finally {
+            setPlacing(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            toast.message("Payment cancelled. You can try again anytime.");
+            setPlacing(false);
+          },
+        },
+      };
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", (resp) => {
+        toast.error(resp.error?.description || "Payment failed");
+        setPlacing(false);
+      });
+      rzp.open();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Could not start payment");
+      setPlacing(false);
+    }
+  };
+
+  const placeOrder = async () => {
+    if (!validate()) return;
+    if (payment === "razorpay") {
+      await placeRazorpayOrder();
+    } else {
+      await placeMockOrder();
     }
   };
 
@@ -81,12 +163,30 @@ export default function Checkout() {
         </div>
 
         <div className="bg-surface border border-warm rounded-lg p-6">
-          <h2 className="font-heading text-lg font-semibold mb-4">2 · Payment (mock)</h2>
+          <h2 className="font-heading text-lg font-semibold mb-4">2 · Payment</h2>
           <RadioGroup value={payment} onValueChange={setPayment} className="space-y-2">
+            <label className={`flex items-center gap-3 border rounded-md p-3 cursor-pointer bg-cream/40 transition-colors ${razorpayCfg.enabled ? "border-warm hover:border-terracotta" : "border-warm opacity-60"}`}>
+              <RadioGroupItem value="razorpay" id="razorpay" data-testid="chk-pay-razorpay" disabled={!razorpayCfg.enabled} />
+              <div className="flex-1">
+                <div className="font-medium flex items-center gap-2">
+                  Razorpay · UPI / Cards / Netbanking
+                  {razorpayCfg.enabled ? (
+                    <span className="text-[10px] uppercase tracking-widest text-sage bg-sage/10 border border-sage/30 rounded-full px-2 py-0.5">Recommended</span>
+                  ) : (
+                    <span className="text-[10px] uppercase tracking-widest text-muted-warm bg-warm/40 border border-warm rounded-full px-2 py-0.5">Setup required</span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-warm">
+                  {razorpayCfg.enabled
+                    ? "Secure payment via Razorpay. Test-mode uses card 4111 1111 1111 1111."
+                    : "Ask the admin to configure RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET."}
+                </div>
+              </div>
+            </label>
             <label className="flex items-center gap-3 border border-warm rounded-md p-3 cursor-pointer bg-cream/40 hover:border-terracotta transition-colors">
               <RadioGroupItem value="mock_card" id="mock_card" data-testid="chk-pay-card" />
               <div className="flex-1">
-                <div className="font-medium">Credit / debit card</div>
+                <div className="font-medium">Mock card (demo)</div>
                 <div className="text-xs text-muted-warm">Simulated — no real charges will be made.</div>
               </div>
             </label>
@@ -144,10 +244,10 @@ export default function Checkout() {
           data-testid="chk-place-order"
           className="w-full bg-terracotta text-white text-sm font-medium rounded-full py-3 hover:brightness-95 transition-colors disabled:opacity-50"
         >
-          {placing ? "Placing order…" : "Place order"}
+          {placing ? "Processing…" : (payment === "razorpay" ? `Pay ₹${total.toFixed(2)} securely` : "Place order")}
         </button>
         <div className="text-[11px] text-muted-warm mt-3">
-          By placing your order, you agree to the demo terms.
+          By placing your order, you agree to the demo terms. Payments via Razorpay are secured with PCI-DSS.
         </div>
       </aside>
     </div>

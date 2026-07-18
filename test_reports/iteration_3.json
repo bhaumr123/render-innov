@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 3 (Razorpay + Reviews + CORS lockdown + Secure cookies) tested end-to-end. Backend: 12/15 new pytest tests pass. Razorpay endpoints correctly return 503 while keys are empty ({key_id:'', enabled:false}; /orders/create-razorpay and /orders/verify-razorpay both 503 'not configured'). Auth still required on Razorpay endpoints (401 without cookies). Verified-purchaser reviews flow is fully working: unauth shows sign-in prompt, signed-in non-purchaser sees 'Verified reviews only' notice, verified purchaser can post a 5-star review, product rating/reviews_count is recomputed (single 5-star -> 5.0/1; 4+5 across two purchasers -> 4.5/2), duplicate review by same user returns 400 'You have already reviewed this product', and eligibility flips to {purchased:true, already_reviewed:true, can_review:false}. Non-purchaser POST returns 403 'Only verified purchasers can review this product'. Secure httpOnly cookies are set correctly: access_token has Secure, HttpOnly, SameSite=lax, Max-Age=86400. Regression: /api/config/shipping still returns {flat_fee:6.99, free_threshold:75}. Frontend: All requested flows work — Reviews component appears below buy box on ProductDetail, guest sees sign-in link, signed-in non-purchaser sees Verified-only notice, purchaser sees review-form and can submit (review-star-5 + review-title + review-comment + review-submit), review appears as review-item-<id> in the list, subsequent visit shows 'Thanks for your review' with no form. Checkout page: chk-pay-razorpay radio is disabled with 'SETUP REQUIRED' badge, chk-pay-card is default & works, chk-pay-cod present. IWI- order number generated (IWI-7895C63C3F on the UI e2e run). CORS: THIS IS THE ONE PROBLEM AREA — see backend_issues.critical.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "CORS (all /api/*)", "issue": "The Kubernetes ingress in front of the backend OVERRIDES the FastAPI CORSMiddleware response. Backend code is correct — a direct curl to http://localhost:8001/api/products with Origin=https://shop-engine-57.preview.emergentagent.com returns 'access-control-allow-origin: https://shop-engine-57.preview.emergentagent.com'. But the SAME request through the public URL returns 'access-control-allow-origin: *' AND 'access-control-allow-credentials: true' simultaneously. This combination is INVALID per the CORS spec and browsers will REJECT credentialed cross-origin requests — meaning a real split-domain deployment (e.g. embedding the app under a different origin) will break auth. The ingress also reflects '*' for evil.example.com, i.e. lockdown is not actually enforced at the edge. Because same-origin browser traffic (the preview URL to itself) does not trigger CORS, day-to-day UI still works, so this only bites once the app is embedded from another origin or exposed on a second domain. Fix requires ingress config change (allow the app's CORS headers to pass through instead of injecting a wildcard), not a code change in server.py.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iter3_reviews_razorpay_cors.py",
+    "/app/test_reports/pytest/pytest_iter3.xml"
+  ],
+  "action_items": [
+    "Fix ingress/edge CORS override so that FastAPI's per-origin allow-origin passes through to clients. Simultaneous 'access-control-allow-origin: *' + 'access-control-allow-credentials: true' is invalid and will break credentialed cross-origin auth. Confirm by re-running the 3 failing tests in /app/backend/tests/test_iter3_reviews_razorpay_cors.py::TestCORSLockdown.",
+    "(Optional) When Razorpay keys get filled in later, remove the 'Setup required' path — currently only the badge changes to 'Recommended'."
+  ],
+  "critical_code_review_comments": [
+    "server.py has grown to ~770 lines. Split into routers/services (auth, products, cart, orders, payments/razorpay, reviews, config) to keep files under ~500 LOC.",
+    "_recompute_product_rating uses find + async loop; it works but is O(n) — for high-volume review counts consider an aggregation pipeline ($group avg) on db.reviews.",
+    "Reviews unique index is (product_id, user_id) unique — good; but note product_id is stored as string here while products are stored under ObjectId. This asymmetry is fine because reviews store the string form, just worth documenting so nobody ever tries to $lookup between reviews and products by _id equality.",
+    "verify-razorpay: on invalid signature, order is marked payment_failed, which is correct, but the client sees only a 400. Consider returning the order state so the client can display a specific 'payment failed' page instead of a generic toast.",
+    "get_razorpay_client() creates a fresh razorpay.Client on every request. Fine functionally, but cache one client at startup when the keys become non-empty for a small latency win.",
+    "COOKIE_SECURE=true is correct for HTTPS preview URL, but on plain-http localhost dev, cookies will silently be dropped by the browser. Consider a startup log warning if COOKIE_SECURE=true and the request scheme is http."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter3_reviews_razorpay_cors.py"
+  ],
+  "success_rate": {"backend": "80% (12/15 iter3 tests; the 3 failures are all the same infra-level CORS issue, not a code defect)", "frontend": "100% (all requested review + checkout UI flows verified)"},
+  "test_credentials": "Admin: admin@shop.com / admin123 (seeded). Iter3 test users registered dynamically with TEST_ prefixes (password Test1234).",
+  "seed_data_creation": "Iter3 test run created TEST_ prefixed users (TEST_rev_*, TEST_verif_1, TEST_avg_a, TEST_avg_b, TEST_ui_<ts>@shop.com), a TEST_Review Product (deleted at teardown), a TEST_Avg Rating Product (deleted at teardown), plus reviews attached to seeded IWI products from the Playwright run. TEST_ prefixed products/reviews from failed prior runs may still exist but do not affect real user flows.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 3 endpoints exercised: GET /api/config/razorpay (returns disabled while keys empty), POST /api/orders/create-razorpay (503), POST /api/orders/verify-razorpay (503), GET /api/products/{id}/reviews (public), GET /api/products/{id}/reviews/eligibility (auth), POST /api/products/{id}/reviews (auth + verified-purchase gate + one-per-user). Rating recompute confirmed (5.0/1 and 4.5/2). Secure/HttpOnly/SameSite=lax cookie attributes are correct on login response. THE ONLY OPEN ISSUE IS CORS: ingress in front of the backend overrides response headers to wildcard. Reproduce with `curl -s -I -H 'Origin: https://evil.example.com' https://shop-engine-57.preview.emergentagent.com/api/products` — it returns 'access-control-allow-origin: *' + 'access-control-allow-credentials: true'. Same request against `http://localhost:8001/api/products` correctly returns the explicit allowed origin only. When Razorpay keys are eventually filled in, remember to test: /orders/create-razorpay creates a rzp order (200 with amount in paise + INR currency + razorpay_order_id), /orders/verify-razorpay with a valid HMAC signature marks the DB order confirmed and empties the cart; invalid signature returns 400 and marks status=payment_failed.",
+  "rca of the issue": "CORS: FastAPI's CORSMiddleware is correctly configured (allow_origins from CORS_ORIGINS env, allow_credentials=True) and works correctly when accessed on internal localhost:8001. However, the Kubernetes ingress terminating https://shop-engine-57.preview.emergentagent.com strips the backend's Access-Control-Allow-Origin header and re-injects 'access-control-allow-origin: *' along with 'access-control-allow-credentials: true' — an invalid combination per the CORS spec. Same-origin browser use (the preview URL to itself) does not trigger CORS enforcement so the UI works today, but any embedded/cross-origin usage will fail. Mitigation: adjust the ingress annotation to pass through backend CORS headers instead of injecting its own, or disable the ingress-level CORS entirely and let FastAPI handle it. No code change in server.py is required."
+}
