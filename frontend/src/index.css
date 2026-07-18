@@ -4,20 +4,21 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Nothing-OS style DARK palette */
+/* Tiranga-inspired palette — saffron / white / green bands with Ashoka blue accent */
 :root {
-    --iwi-bg: #0A0A0A;         /* body */
-    --iwi-surface: #141414;    /* cards */
-    --iwi-ink-dark: #000000;   /* strongest dark — announce strip, footer, CTAs */
-    --iwi-fg: #EDEDED;         /* primary text on dark */
-    --iwi-muted: #9A9A9A;      /* secondary text */
-    --iwi-border: #262626;     /* subtle borders */
-    --iwi-accent: #DC7238;     /* terracotta CTA accent (kept) */
-    --iwi-sage: #8FAF7C;       /* brighter sage for dark bg */
+    --iwi-saffron: #FF9933;
+    --iwi-white: #FFFFFF;
+    --iwi-green: #138808;
+    --iwi-blue: #000080;
+    --iwi-surface: #FFFFFF;
+    --iwi-ink: #101828;
+    --iwi-muted: #4A5568;
+    --iwi-border: #E6E1D3;
+    --iwi-accent: #FF9933;
 }
 
 html, body {
-    background-color: var(--iwi-bg);
+    background-color: var(--iwi-white);
 }
 
 body {
@@ -25,12 +26,22 @@ body {
     font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    color: var(--iwi-fg);
+    color: var(--iwi-ink);
+    /* Tiranga tricolor bands, softened with a warm tint, with a fine dot-matrix overlay */
     background-image:
-        radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.14) 1px, transparent 1.6px),
-        radial-gradient(circle at 5px 5px, rgba(255, 255, 255, 0.06) 0.6px, transparent 1px);
-    background-size: 10px 10px, 10px 10px;
-    background-position: 0 0, 5px 5px;
+        radial-gradient(circle at 1px 1px, rgba(0, 0, 128, 0.10) 1px, transparent 1.6px),
+        linear-gradient(
+            to bottom,
+            rgba(255, 153, 51, 0.35) 0%,
+            rgba(255, 153, 51, 0.35) 33.33%,
+            rgba(255, 255, 255, 0.85) 33.33%,
+            rgba(255, 255, 255, 0.85) 66.66%,
+            rgba(19, 136, 8, 0.30) 66.66%,
+            rgba(19, 136, 8, 0.30) 100%
+        );
+    background-size: 10px 10px, 100% 100vh;
+    background-position: 0 0, 0 0;
+    background-repeat: repeat, no-repeat;
     background-attachment: fixed;
 }
 
@@ -38,7 +49,7 @@ h1, h2, h3, h4, h5, h6, .font-heading {
     font-family: 'Fraunces', ui-serif, Georgia, serif;
     letter-spacing: -0.015em;
     font-optical-sizing: auto;
-    color: var(--iwi-fg);
+    color: var(--iwi-ink);
 }
 
 code, .font-mono {
@@ -59,26 +70,25 @@ code, .font-mono {
 
 @layer base {
     :root {
-        /* shadcn design tokens — DARK */
-        --background: 0 0% 4%;
-        --foreground: 0 0% 93%;
-        --card: 0 0% 8%;
-        --card-foreground: 0 0% 93%;
-        --popover: 0 0% 8%;
-        --popover-foreground: 0 0% 93%;
-        --primary: 0 0% 93%;
-        --primary-foreground: 0 0% 4%;
-        --secondary: 0 0% 13%;
-        --secondary-foreground: 0 0% 93%;
-        --muted: 0 0% 13%;
-        --muted-foreground: 0 0% 63%;
-        --accent: 20 65% 55%;
-        --accent-foreground: 0 0% 4%;
+        --background: 0 0% 100%;
+        --foreground: 220 40% 12%;
+        --card: 0 0% 100%;
+        --card-foreground: 220 40% 12%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 220 40% 12%;
+        --primary: 240 100% 25%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 40 30% 95%;
+        --secondary-foreground: 220 40% 12%;
+        --muted: 40 30% 95%;
+        --muted-foreground: 220 15% 40%;
+        --accent: 27 100% 60%;
+        --accent-foreground: 0 0% 98%;
         --destructive: 8 60% 45%;
         --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 15%;
-        --input: 0 0% 15%;
-        --ring: 20 65% 55%;
+        --border: 35 30% 86%;
+        --input: 35 30% 90%;
+        --ring: 27 100% 60%;
         --radius: 0.375rem;
     }
 }
@@ -90,62 +100,61 @@ code, .font-mono {
     body {
         @apply text-foreground;
     }
-    /* Form inputs get a subtle dark surface so they don't disappear on the pattern */
     input, textarea, select {
-        background-color: #171717;
-        color: var(--iwi-fg);
+        background-color: #FFFFFF;
+        color: var(--iwi-ink);
     }
     input::placeholder, textarea::placeholder {
-        color: #6B6B6B;
+        color: #8B8B8B;
     }
 }
 
 @layer utilities {
     .bg-cream {
-        background-color: var(--iwi-bg);
-        background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.14) 1px, transparent 1.6px);
-        background-size: 10px 10px;
+        background-color: transparent;
+        background-image:
+            radial-gradient(circle at 1px 1px, rgba(0, 0, 128, 0.10) 1px, transparent 1.6px),
+            linear-gradient(
+                to bottom,
+                rgba(255, 153, 51, 0.55) 0%,
+                rgba(255, 153, 51, 0.55) 33.33%,
+                rgba(255, 255, 255, 0.90) 33.33%,
+                rgba(255, 255, 255, 0.90) 66.66%,
+                rgba(19, 136, 8, 0.45) 66.66%,
+                rgba(19, 136, 8, 0.45) 100%
+            );
+        background-size: 10px 10px, 100% 100%;
     }
-    .bg-surface { background-color: var(--iwi-surface); }
-    .bg-ink { background-color: var(--iwi-ink-dark); }
-    .bg-parchment { background-color: #1C1C1C; }
-    .bg-sage { background-color: var(--iwi-sage); }
-    .bg-terracotta { background-color: var(--iwi-accent); }
-    .text-ink { color: var(--iwi-fg); }
-    .text-sage { color: var(--iwi-sage); }
-    .text-terracotta { color: var(--iwi-accent); }
-    .text-cream { color: var(--iwi-fg); }
+    .bg-surface { background-color: #FFFFFF; }
+    .bg-ink { background-color: var(--iwi-blue); }
+    .bg-parchment { background-color: #FAF6EC; }
+    .bg-sage { background-color: var(--iwi-green); }
+    .bg-terracotta { background-color: var(--iwi-saffron); }
+    .text-ink { color: var(--iwi-ink); }
+    .text-sage { color: var(--iwi-green); }
+    .text-terracotta { color: var(--iwi-saffron); }
+    .text-cream { color: #FFFFFF; }
     .text-muted-warm { color: var(--iwi-muted); }
     .border-warm { border-color: var(--iwi-border); }
-    .ring-terracotta { --tw-ring-color: var(--iwi-accent); }
+    .ring-terracotta { --tw-ring-color: var(--iwi-saffron); }
 
-    /* Nothing-style dot-matrix panel */
     .dot-matrix {
-        background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.18) 1px, transparent 1.6px);
+        background-image: radial-gradient(circle at 1px 1px, rgba(0, 0, 128, 0.18) 1px, transparent 1.6px);
         background-size: 8px 8px;
     }
-    .dot-matrix-inverted {
-        background-image: radial-gradient(circle at 1px 1px, rgba(0,0,0,0.18) 1px, transparent 1.6px);
-        background-size: 8px 8px;
+
+    /* Ashoka chakra hint — thin blue rule available as a class */
+    .chakra-rule {
+        background:
+            linear-gradient(to right, transparent 0, transparent 20%,
+                var(--iwi-blue) 20%, var(--iwi-blue) 20.5%, transparent 20.5%,
+                transparent 25%, var(--iwi-blue) 25%, var(--iwi-blue) 25.5%, transparent 25.5%,
+                transparent 100%);
     }
-}
-
-/* Give CTAs a subtle inset outline so pure-black buttons pop on a dark body */
-button.bg-ink, a.bg-ink {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
-}
-button.bg-ink:hover, a.bg-ink:hover {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-}
-
-/* Muted-warm text on pure-black surfaces should still be readable */
-.bg-ink .text-muted-warm,
-.bg-ink [class*="text-cream/"] {
-    color: rgba(237, 237, 237, 0.7);
 }
 
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [role="button"]:focus-visible {
-    outline: 2px solid var(--iwi-accent);
+    outline: 2px solid var(--iwi-blue);
     outline-offset: 2px;
 }
 
@@ -162,9 +171,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
-
-/* Product images sit on a slightly lighter panel so they don't blend with the bg */
-img { color: transparent; }
 
 @layer base {
     [data-debug-wrapper="true"] {
