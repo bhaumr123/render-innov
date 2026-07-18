@@ -1,16 +1,36 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+    --iwi-bg: #EDEDED;
+    --iwi-surface: #FFFFFF;
+    --iwi-ink: #0A0A0A;
+    --iwi-muted: #6E6E6E;
+    --iwi-border: #D6D6D6;
+    --iwi-accent: #DC7238;
+    --iwi-sage: #4E5B4A;
+}
+
+html, body {
+    background-color: var(--iwi-bg);
+}
 
 body {
     margin: 0;
     font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #F5EFE4;
-    color: #1F2E22;
+    color: var(--iwi-ink);
+    /* Nothing 3a-style dot-matrix background */
+    background-image:
+        radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.10) 1px, transparent 1.6px),
+        radial-gradient(circle at 5px 5px, rgba(0, 0, 0, 0.05) 0.6px, transparent 1px);
+    background-size: 10px 10px, 10px 10px;
+    background-position: 0 0, 5px 5px;
+    background-attachment: fixed;
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
@@ -19,32 +39,32 @@ h1, h2, h3, h4, h5, h6, .font-heading {
     font-optical-sizing: auto;
 }
 
-code {
-    font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+code, .font-mono {
+    font-family: 'JetBrains Mono', source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
 @layer base {
     :root {
-        --background: 40 35% 93%;
-        --foreground: 138 20% 15%;
-        --card: 40 40% 98%;
-        --card-foreground: 138 20% 15%;
-        --popover: 40 40% 98%;
-        --popover-foreground: 138 20% 15%;
-        --primary: 138 25% 20%;
-        --primary-foreground: 40 40% 98%;
-        --secondary: 40 25% 88%;
-        --secondary-foreground: 138 25% 20%;
-        --muted: 40 20% 90%;
-        --muted-foreground: 138 8% 35%;
+        --background: 0 0% 93%;
+        --foreground: 0 0% 4%;
+        --card: 0 0% 100%;
+        --card-foreground: 0 0% 4%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 0 0% 4%;
+        --primary: 0 0% 4%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 0 0% 92%;
+        --secondary-foreground: 0 0% 4%;
+        --muted: 0 0% 90%;
+        --muted-foreground: 0 0% 43%;
         --accent: 20 65% 55%;
-        --accent-foreground: 40 40% 98%;
+        --accent-foreground: 0 0% 98%;
         --destructive: 8 60% 45%;
-        --destructive-foreground: 40 40% 98%;
-        --border: 40 20% 82%;
-        --input: 40 20% 82%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 0 0% 84%;
+        --input: 0 0% 84%;
         --ring: 20 65% 55%;
-        --radius: 0.5rem;
+        --radius: 0.375rem;
     }
 }
 
@@ -53,27 +73,42 @@ code {
         @apply border-border;
     }
     body {
-        @apply bg-background text-foreground;
+        @apply text-foreground;
     }
 }
 
 @layer utilities {
-    .bg-cream { background-color: #F5EFE4; }
-    .bg-surface { background-color: #FFFFFF; }
-    .bg-ink { background-color: #1F2E22; }
-    .bg-sage { background-color: #6B8F5E; }
-    .bg-terracotta { background-color: #DC7238; }
-    .bg-parchment { background-color: #EFE5D0; }
-    .text-ink { color: #1F2E22; }
-    .text-sage { color: #6B8F5E; }
-    .text-terracotta { color: #DC7238; }
-    .text-muted-warm { color: #6E6A62; }
-    .border-warm { border-color: #E3DCC9; }
-    .ring-terracotta { --tw-ring-color: #DC7238; }
+    .bg-cream {
+        background-color: var(--iwi-bg);
+        background-image: radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.10) 1px, transparent 1.6px);
+        background-size: 10px 10px;
+    }
+    .bg-surface { background-color: var(--iwi-surface); }
+    .bg-ink { background-color: var(--iwi-ink); }
+    .bg-sage { background-color: var(--iwi-sage); }
+    .bg-terracotta { background-color: var(--iwi-accent); }
+    .bg-parchment { background-color: #E4E4E4; }
+    .text-ink { color: var(--iwi-ink); }
+    .text-sage { color: var(--iwi-sage); }
+    .text-terracotta { color: var(--iwi-accent); }
+    .text-cream { color: #F5F5F5; }
+    .text-muted-warm { color: var(--iwi-muted); }
+    .border-warm { border-color: var(--iwi-border); }
+    .ring-terracotta { --tw-ring-color: var(--iwi-accent); }
+
+    /* Nothing-style dot-matrix panel used inside cards/heros if needed */
+    .dot-matrix {
+        background-image: radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.18) 1px, transparent 1.6px);
+        background-size: 8px 8px;
+    }
+    .dot-matrix-inverted {
+        background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.18) 1px, transparent 1.6px);
+        background-size: 8px 8px;
+    }
 }
 
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [role="button"]:focus-visible {
-    outline: 2px solid #DC7238;
+    outline: 2px solid var(--iwi-accent);
     outline-offset: 2px;
 }
 
@@ -89,13 +124,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
-}
-
-/* Subtle grain overlay hook */
-.grain {
-    background-image: radial-gradient(circle at 25% 25%, rgba(0,0,0,0.02) 1px, transparent 1px),
-                      radial-gradient(circle at 75% 75%, rgba(0,0,0,0.02) 1px, transparent 1px);
-    background-size: 6px 6px;
 }
 
 @layer base {
