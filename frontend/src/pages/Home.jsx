@@ -62,11 +62,13 @@ export default function Home() {
           </div>
 
           <div className="relative">
-            <div className="aspect-[4/5] bg-parchment rounded-xl overflow-hidden border border-warm">
+            <div className="aspect-[4/5] bg-parchment rounded-xl overflow-hidden border border-warm shadow-lg">
               <img
                 src={CAT_ARTISAN}
                 alt="Artisanal goods"
                 className="w-full h-full object-cover"
+                loading="eager"
+                decoding="async"
               />
             </div>
             <div className="absolute -bottom-4 -left-4 bg-surface border border-warm rounded-lg p-3 shadow-sm flex items-center gap-3">
@@ -97,10 +99,10 @@ export default function Home() {
               to={`/products?category=${encodeURIComponent(c.name)}`}
               key={c.name}
               data-testid={`home-cat-${c.name}`}
-              className="group relative bg-surface border border-warm rounded-lg overflow-hidden"
+              className="group relative bg-surface border border-warm rounded-lg overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
             >
               <div className="aspect-[4/5] overflow-hidden bg-parchment/50">
-                <img src={c.img} alt={c.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <img src={c.img} alt={c.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" decoding="async" />
               </div>
               <div className="p-5">
                 <div className="font-heading text-2xl font-semibold text-ink">{c.name}</div>
