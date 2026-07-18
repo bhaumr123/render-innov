@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
+import Testimonials from "@/components/Testimonials";
 import { CAT_TEAS, CAT_SPICES, CAT_ARTISAN, LOGO } from "@/lib/assets";
 import { Leaf, Sprout, Package } from "lucide-react";
 
@@ -163,6 +164,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Testimonials */}
+      <Testimonials />
     </div>
   );
 }

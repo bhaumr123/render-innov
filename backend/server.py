@@ -745,6 +745,30 @@ async def create_review(product_id: str, payload: ReviewIn, user: dict = Depends
 
 
 # ---------- Razorpay webhook ----------
+@api_router.get("/reviews/top")
+async def top_reviews(limit: int = 20):
+    cursor = db.reviews.find({"rating": {"$gte": 4}}).sort([("created_at", -1)]).limit(limit)
+    out = []
+    async for r in cursor:
+        prod_title = ""
+        try:
+            prod = await db.products.find_one({"_id": ObjectId(r["product_id"])})
+            prod_title = prod.get("title", "") if prod else ""
+        except Exception:
+            pass
+        out.append({
+            "id": str(r["_id"]),
+            "user_name": r.get("user_name", "Customer"),
+            "rating": r.get("rating"),
+            "title": r.get("title", ""),
+            "comment": r.get("comment", ""),
+            "created_at": r.get("created_at"),
+            "product_id": r.get("product_id"),
+            "product_title": prod_title,
+        })
+    return {"reviews": out}
+
+
 @api_router.post("/webhooks/razorpay")
 async def razorpay_webhook(request: Request):
     secret = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
