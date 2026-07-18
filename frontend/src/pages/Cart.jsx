@@ -1,105 +1,118 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
 import { Trash2, Plus, Minus } from "lucide-react";
+import api from "@/lib/api";
 
 export default function Cart() {
   const { cart, updateQty, removeItem } = useCart();
   const navigate = useNavigate();
+  const [shippingCfg, setShippingCfg] = useState({ flat_fee: 6.99, free_threshold: 75 });
 
-  const shipping = cart.subtotal >= 35 || cart.subtotal === 0 ? 0 : 4.99;
-  const tax = +(cart.subtotal * 0.08).toFixed(2);
+  useEffect(() => {
+    api.get("/config/shipping").then((r) => setShippingCfg(r.data));
+  }, []);
+
+  const shipping = cart.subtotal === 0 ? 0 : (cart.subtotal >= shippingCfg.free_threshold ? 0 : shippingCfg.flat_fee);
+  const tax = +(cart.subtotal * 0.05).toFixed(2);
   const total = +(cart.subtotal + tax + shipping).toFixed(2);
+  const remaining = Math.max(0, shippingCfg.free_threshold - cart.subtotal);
 
   return (
-    <div className="max-w-screen-2xl mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-      <section className="bg-white border border-neutral-200 rounded-md p-4">
-        <h1 className="font-heading text-2xl font-semibold">Shopping Cart</h1>
-        <div className="text-xs link-blue hover:underline mt-1">Deselect all items</div>
-        <hr className="my-3 border-neutral-200" />
+    <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-8 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8">
+      <section className="bg-surface border border-warm rounded-lg p-6">
+        <div className="text-[11px] tracking-[0.3em] uppercase text-sage mb-1">Your basket</div>
+        <h1 className="font-heading text-3xl font-semibold">Cart</h1>
 
         {cart.items.length === 0 ? (
-          <div className="py-8 text-center text-neutral-600">
-            <div className="font-heading text-lg font-semibold">Your ShopKart Cart is empty.</div>
-            <Link to="/products" data-testid="cart-shop-link" className="link-blue hover:underline text-sm mt-2 inline-block">
+          <div className="py-16 text-center">
+            <div className="font-heading text-xl">Your basket is empty.</div>
+            <p className="text-sm text-muted-warm mt-2">A moment of pause. Then browse the shelf.</p>
+            <Link
+              to="/products"
+              data-testid="cart-shop-link"
+              className="mt-4 inline-block bg-ink text-cream text-sm px-5 py-2.5 rounded-full hover:bg-terracotta transition-colors"
+            >
               Continue shopping
             </Link>
           </div>
         ) : (
-          <ul className="divide-y divide-neutral-200">
-            {cart.items.map((it) => (
-              <li key={it.product_id} className="py-4 flex gap-4" data-testid={`cart-item-${it.product_id}`}>
-                <Link to={`/product/${it.product_id}`} className="w-24 h-24 shrink-0 bg-white border border-neutral-100 rounded flex items-center justify-center">
-                  <img src={it.product?.image_url} className="max-w-full max-h-full object-contain" alt={it.product?.title} />
-                </Link>
-                <div className="flex-1 min-w-0">
-                  <Link to={`/product/${it.product_id}`} className="font-heading font-semibold text-base line-clamp-2 hover:link-blue">
-                    {it.product?.title}
+          <ul className="mt-6 divide-y divide-warm">
+            {cart.items.map((it) => {
+              const key = `${it.product_id}::${it.variant_label || ""}`;
+              return (
+                <li key={key} className="py-5 flex gap-4" data-testid={`cart-item-${it.product_id}`}>
+                  <Link to={`/product/${it.product_id}`} className="w-24 h-24 shrink-0 bg-parchment/40 border border-warm rounded flex items-center justify-center">
+                    <img src={it.product?.image_url} className="max-w-full max-h-full object-contain" alt={it.product?.title} />
                   </Link>
-                  <div className="text-xs text-[#067D62] mt-1">In Stock</div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <div className="flex items-center border border-neutral-300 rounded-full">
+                  <div className="flex-1 min-w-0">
+                    <Link to={`/product/${it.product_id}`} className="font-heading text-base font-semibold text-ink line-clamp-2 hover:text-terracotta transition-colors">
+                      {it.product?.title}
+                    </Link>
+                    <div className="text-xs text-muted-warm mt-1">
+                      {it.product?.category}
+                      {it.variant_label && <> · <span className="text-ink">{it.variant_label}</span></>}
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="inline-flex items-center border border-warm rounded-full bg-cream">
+                        <button
+                          onClick={() => updateQty(it.product_id, it.quantity - 1, it.variant_label)}
+                          data-testid={`cart-qty-dec-${it.product_id}`}
+                          className="w-8 h-8 rounded-l-full hover:bg-parchment"
+                        >
+                          <Minus size={12} className="mx-auto" />
+                        </button>
+                        <span className="px-3 text-sm" data-testid={`cart-qty-${it.product_id}`}>{it.quantity}</span>
+                        <button
+                          onClick={() => updateQty(it.product_id, it.quantity + 1, it.variant_label)}
+                          data-testid={`cart-qty-inc-${it.product_id}`}
+                          className="w-8 h-8 rounded-r-full hover:bg-parchment"
+                        >
+                          <Plus size={12} className="mx-auto" />
+                        </button>
+                      </div>
                       <button
-                        onClick={() => updateQty(it.product_id, it.quantity - 1)}
-                        data-testid={`cart-qty-dec-${it.product_id}`}
-                        className="px-2 py-1 hover:bg-neutral-100 rounded-l-full"
+                        onClick={() => removeItem(it.product_id, it.variant_label)}
+                        data-testid={`cart-remove-${it.product_id}`}
+                        className="text-xs text-muted-warm hover:text-terracotta transition-colors flex items-center gap-1"
                       >
-                        <Minus size={14} />
-                      </button>
-                      <span className="px-3 text-sm" data-testid={`cart-qty-${it.product_id}`}>{it.quantity}</span>
-                      <button
-                        onClick={() => updateQty(it.product_id, it.quantity + 1)}
-                        data-testid={`cart-qty-inc-${it.product_id}`}
-                        className="px-2 py-1 hover:bg-neutral-100 rounded-r-full"
-                      >
-                        <Plus size={14} />
+                        <Trash2 size={12} /> Remove
                       </button>
                     </div>
-                    <button
-                      onClick={() => removeItem(it.product_id)}
-                      data-testid={`cart-remove-${it.product_id}`}
-                      className="link-blue text-sm hover:underline flex items-center gap-1"
-                    >
-                      <Trash2 size={14} /> Delete
-                    </button>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-bold text-lg">${(it.product?.price * it.quantity).toFixed(2)}</div>
-                </div>
-              </li>
-            ))}
+                  <div className="text-right">
+                    <div className="font-heading text-lg font-semibold text-ink">
+                      ₹{(it.unit_price * it.quantity).toFixed(2)}
+                    </div>
+                    <div className="text-xs text-muted-warm">₹{it.unit_price.toFixed(2)} each</div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
-        )}
-
-        {cart.items.length > 0 && (
-          <div className="text-right pt-3">
-            <span className="text-neutral-700">Subtotal ({cart.items.reduce((s, i) => s + i.quantity, 0)} items): </span>
-            <span className="font-bold" data-testid="cart-subtotal">${cart.subtotal.toFixed(2)}</span>
-          </div>
         )}
       </section>
 
-      <aside className="bg-white border border-neutral-200 rounded-md p-4 h-fit">
-        {cart.items.length > 0 && cart.subtotal < 35 && (
-          <div className="text-sm text-[#067D62] mb-2">
-            Add ${(35 - cart.subtotal).toFixed(2)} more for FREE shipping
+      <aside className="bg-surface border border-warm rounded-lg p-6 h-fit">
+        <div className="font-heading text-xl font-semibold mb-4">Order summary</div>
+        {cart.items.length > 0 && remaining > 0 && (
+          <div className="text-xs text-sage bg-sage/10 border border-sage/20 rounded-md p-2 mb-4">
+            Add <span className="font-semibold">₹{remaining.toFixed(2)}</span> more for complimentary shipping.
           </div>
         )}
-        <div className="text-lg mb-3">
-          <span>Subtotal ({cart.items.reduce((s, i) => s + i.quantity, 0)} items): </span>
-          <span className="font-bold">${cart.subtotal.toFixed(2)}</span>
-        </div>
-        <div className="text-xs text-neutral-600 space-y-1 mb-3">
-          <div className="flex justify-between"><span>Shipping</span><span>${shipping.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>Tax (est.)</span><span>${tax.toFixed(2)}</span></div>
-          <div className="flex justify-between font-semibold text-black text-sm pt-1 border-t border-neutral-200"><span>Total</span><span>${total.toFixed(2)}</span></div>
+        <div className="text-sm space-y-2">
+          <div className="flex justify-between"><span className="text-muted-warm">Subtotal</span><span data-testid="cart-subtotal">₹{cart.subtotal.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-warm">Shipping</span><span>{shipping === 0 && cart.subtotal > 0 ? <span className="text-sage">Free</span> : `₹${shipping.toFixed(2)}`}</span></div>
+          <div className="flex justify-between"><span className="text-muted-warm">Tax (5%)</span><span>₹{tax.toFixed(2)}</span></div>
+          <div className="flex justify-between font-heading text-lg font-semibold border-t border-warm pt-3 mt-3">
+            <span>Total</span><span data-testid="cart-total">₹{total.toFixed(2)}</span>
+          </div>
         </div>
         <button
           onClick={() => navigate("/checkout")}
           disabled={cart.items.length === 0}
           data-testid="cart-checkout-btn"
-          className="w-full amazon-orange text-black font-semibold text-sm rounded-full py-2 hover:brightness-95 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full mt-5 bg-ink text-cream text-sm font-medium rounded-full py-3 hover:bg-terracotta transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Proceed to checkout
         </button>

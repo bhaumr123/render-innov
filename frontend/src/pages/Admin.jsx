@@ -6,13 +6,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Trash2, Pencil } from "lucide-react";
+import { Trash2, Pencil, Plus, X } from "lucide-react";
+import {
+  IMG_BLUE_TEA, IMG_DHANIYA, IMG_CHILLI, IMG_OIL, IMG_BEADS,
+  IMG_ASHWAGANDHA, IMG_HONEY, IMG_LOOSE_TEA,
+} from "@/lib/assets";
 
-const CATEGORIES = ["Electronics", "Smart Home", "Fashion", "Books", "Home & Kitchen", "Toys", "Sports", "Beauty"];
+const CATEGORIES = ["Teas", "Spices", "Artisanal Goods"];
 
 const emptyForm = {
-  title: "", description: "", price: "", category: "Electronics",
-  stock: 100, image_url: "", brand: "", rating: 4.5, reviews_count: 0,
+  title: "", description: "", price: "", category: "Teas",
+  stock: 100, image_url: "", brand: "IWI", rating: 4.9, reviews_count: 0,
+  size_variants: [],
 };
 
 export default function Admin() {
@@ -32,8 +37,13 @@ export default function Admin() {
       ...form,
       price: parseFloat(form.price),
       stock: parseInt(form.stock),
-      rating: parseFloat(form.rating || 4.5),
+      rating: parseFloat(form.rating || 4.9),
       reviews_count: parseInt(form.reviews_count || 0),
+      size_variants: form.size_variants.map((v) => ({
+        label: v.label,
+        price: parseFloat(v.price),
+        stock: parseInt(v.stock || 0),
+      })).filter((v) => v.label && !isNaN(v.price)),
     };
     try {
       if (editingId) {
@@ -56,7 +66,8 @@ export default function Admin() {
     setForm({
       title: p.title, description: p.description || "", price: p.price,
       category: p.category, stock: p.stock, image_url: p.image_url || "",
-      brand: p.brand || "", rating: p.rating || 4.5, reviews_count: p.reviews_count || 0,
+      brand: p.brand || "IWI", rating: p.rating || 4.9, reviews_count: p.reviews_count || 0,
+      size_variants: p.size_variants || [],
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -68,32 +79,120 @@ export default function Admin() {
     loadProducts();
   };
 
+  const addVariantRow = () => setForm({ ...form, size_variants: [...form.size_variants, { label: "", price: "", stock: 100 }] });
+  const removeVariantRow = (idx) => setForm({ ...form, size_variants: form.size_variants.filter((_, i) => i !== idx) });
+  const setVariantField = (idx, k, v) => {
+    const copy = [...form.size_variants];
+    copy[idx] = { ...copy[idx], [k]: v };
+    setForm({ ...form, size_variants: copy });
+  };
+
   const seedDemo = async () => {
     const demo = [
-      { title: "Sony WH-1000XM5 Wireless Headphones", brand: "Sony", price: 349.99, category: "Electronics", stock: 40, rating: 4.7, reviews_count: 1245, image_url: "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwyfHx3aXJlbGVzcyUyMGhlYWRwaG9uZXMlMjBwcm9kdWN0fGVufDB8fHx8MTc4NDM4NDI5Mnww&ixlib=rb-4.1.0&q=85", description: "Industry-leading noise cancellation with premium sound." },
-      { title: "Google Nest Mini (2nd Gen) Smart Speaker", brand: "Google", price: 49.0, category: "Smart Home", stock: 120, rating: 4.5, reviews_count: 3220, image_url: "https://images.unsplash.com/photo-1519558260268-cde7e03a0152?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwzfHxzbWFydCUyMGhvbWUlMjBkZXZpY2UlMjBwcm9kdWN0fGVufDB8fHx8MTc4NDM4NDI5Mnww&ixlib=rb-4.1.0&q=85", description: "Voice-controlled smart speaker with the Google Assistant." },
-      { title: "JBL Bluetooth Over-Ear Headphones", brand: "JBL", price: 129.99, category: "Electronics", stock: 80, rating: 4.4, reviews_count: 890, image_url: "https://images.pexels.com/photos/3081173/pexels-photo-3081173.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", description: "Bold sound, ultra-comfortable, 40h battery life." },
-      { title: "Modern Smartphone 128GB (Unlocked)", brand: "Nova", price: 599.0, category: "Electronics", stock: 30, rating: 4.3, reviews_count: 512, image_url: "https://images.pexels.com/photos/22307556/pexels-photo-22307556.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", description: "OLED display, 5G ready, 128GB storage." },
-      { title: "The Everything Shopping Guide (Paperback)", brand: "ShopPress", price: 14.99, category: "Books", stock: 200, rating: 4.6, reviews_count: 78, image_url: "https://images.pexels.com/photos/6214155/pexels-photo-6214155.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", description: "A complete guide to smart online shopping." },
-      { title: "Weekend Tote Bag – Canvas", brand: "Boulevard", price: 39.5, category: "Fashion", stock: 60, rating: 4.2, reviews_count: 210, image_url: "https://images.pexels.com/photos/6956903/pexels-photo-6956903.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", description: "Roomy weekender for travel and errands." },
+      {
+        title: "Butterfly Pea Flower · Herbal Tea",
+        brand: "Blue Tea Co.", category: "Teas",
+        description: "Caffeine-free herbal infusion made from 100 hand-picked butterfly pea blossoms. A striking indigo brew.",
+        price: 199, stock: 60, rating: 4.8, reviews_count: 214, image_url: IMG_BLUE_TEA,
+        size_variants: [
+          { label: "25g · 20 bags", price: 199, stock: 60 },
+          { label: "50g · 40 bags", price: 349, stock: 40 },
+          { label: "100g · 80 bags", price: 599, stock: 25 },
+        ],
+      },
+      {
+        title: "Marigold Petals · Loose Herbal",
+        brand: "IWI Apothecary", category: "Teas",
+        description: "Sun-dried marigold petals. Steep for a soothing, honey-toned brew or blend into your own infusions.",
+        price: 249, stock: 40, rating: 4.7, reviews_count: 89, image_url: IMG_LOOSE_TEA,
+        size_variants: [
+          { label: "30g pouch", price: 249, stock: 40 },
+          { label: "80g jar", price: 549, stock: 20 },
+        ],
+      },
+      {
+        title: "TRJU Coriander (Dhaniya) Powder",
+        brand: "TRJU", category: "Spices",
+        description: "Freshly stone-ground coriander seeds. Bright, citrus-forward, essential in every Indian kitchen.",
+        price: 79, stock: 120, rating: 4.6, reviews_count: 421, image_url: IMG_DHANIYA,
+        size_variants: [
+          { label: "100g", price: 79, stock: 120 },
+          { label: "250g", price: 179, stock: 80 },
+          { label: "500g", price: 329, stock: 40 },
+        ],
+      },
+      {
+        title: "Marwar Red Chilli Powder",
+        brand: "Marwar", category: "Spices",
+        description: "Sun-dried Rajasthani chillies, stone-ground. Vivid red colour with a warm, lingering heat.",
+        price: 149, stock: 80, rating: 4.7, reviews_count: 312, image_url: IMG_CHILLI,
+        size_variants: [
+          { label: "100g", price: 149, stock: 80 },
+          { label: "250g", price: 349, stock: 60 },
+          { label: "500g", price: 649, stock: 30 },
+        ],
+      },
+      {
+        title: "Tata Cold-Pressed Mustard Oil",
+        brand: "Tata Simply Better", category: "Artisanal Goods",
+        description: "Kachi ghani cold-pressed mustard oil. Full aroma, unrefined, made in small batches.",
+        price: 399, stock: 50, rating: 4.6, reviews_count: 178, image_url: IMG_OIL,
+        size_variants: [
+          { label: "500 ml", price: 399, stock: 50 },
+          { label: "1 L", price: 749, stock: 30 },
+        ],
+      },
+      {
+        title: "Ashwagandhadi Churna · Ayurvedic Tonic",
+        brand: "Baidyanath", category: "Artisanal Goods",
+        description: "Classical Ayurvedic churna blend with Ashwagandha at its heart. Traditionally used for calm and vitality.",
+        price: 189, stock: 60, rating: 4.8, reviews_count: 245, image_url: IMG_ASHWAGANDHA,
+        size_variants: [
+          { label: "60g", price: 189, stock: 60 },
+          { label: "120g", price: 349, stock: 30 },
+        ],
+      },
+      {
+        title: "Himalayan Forest Honey · Raw & Unfiltered",
+        brand: "Honey Veda", category: "Artisanal Goods",
+        description: "Wild, raw, unfiltered honey collected from Himalayan forests. Rich amber, floral, mineral.",
+        price: 549, stock: 40, rating: 4.9, reviews_count: 401, image_url: IMG_HONEY,
+        size_variants: [
+          { label: "250g", price: 549, stock: 40 },
+          { label: "500g", price: 999, stock: 25 },
+        ],
+      },
+      {
+        title: "Tulsi Japa Mala · 108 Prayer Beads",
+        brand: "IWI Apothecary", category: "Artisanal Goods",
+        description: "Hand-strung 108-bead Tulsi mala for meditation and mindful practice. Small red cotton tassel.",
+        price: 799, stock: 25, rating: 5.0, reviews_count: 68, image_url: IMG_BEADS,
+        size_variants: [
+          { label: "6mm beads", price: 799, stock: 25 },
+          { label: "8mm beads", price: 999, stock: 15 },
+        ],
+      },
     ];
     for (const d of demo) {
       try { await api.post("/products", d); } catch {}
     }
-    toast.success("Demo products added");
+    toast.success("Demo catalog added");
     loadProducts();
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto px-4 py-4">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="font-heading text-2xl font-semibold">Admin panel</h1>
+    <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <div className="text-[11px] tracking-[0.3em] uppercase text-sage mb-1">Admin</div>
+          <h1 className="font-heading text-3xl font-semibold">Manage the apothecary</h1>
+        </div>
         <button
           onClick={seedDemo}
           data-testid="admin-seed-btn"
-          className="text-sm border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 rounded-full px-4 py-1.5 transition-colors"
+          className="text-sm border border-ink text-ink rounded-full px-5 py-2 hover:bg-ink hover:text-cream transition-colors"
         >
-          + Add 6 demo products
+          + Seed 8 demo products
         </button>
       </div>
 
@@ -103,8 +202,8 @@ export default function Admin() {
           <TabsTrigger value="orders" data-testid="admin-tab-orders">Orders</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="products" className="mt-4 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4">
-          <form onSubmit={submit} className="bg-white border border-neutral-200 rounded-md p-4 space-y-3 h-fit" data-testid="admin-product-form">
+        <TabsContent value="products" className="mt-6 grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-6">
+          <form onSubmit={submit} className="bg-surface border border-warm rounded-lg p-5 space-y-3 h-fit" data-testid="admin-product-form">
             <h2 className="font-heading text-lg font-semibold">{editingId ? "Edit product" : "New product"}</h2>
             <div>
               <Label>Title</Label>
@@ -125,22 +224,13 @@ export default function Admin() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label>Price ($)</Label>
+                <Label>Base price (₹)</Label>
                 <Input data-testid="admin-price" type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
+                <div className="text-[10px] text-muted-warm mt-1">Used when no size variants are defined.</div>
               </div>
               <div>
-                <Label>Stock</Label>
+                <Label>Base stock</Label>
                 <Input data-testid="admin-stock" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Rating</Label>
-                <Input type="number" step="0.1" min="0" max="5" value={form.rating} onChange={(e) => setForm({ ...form, rating: e.target.value })} />
-              </div>
-              <div>
-                <Label>Reviews</Label>
-                <Input type="number" value={form.reviews_count} onChange={(e) => setForm({ ...form, reviews_count: e.target.value })} />
               </div>
             </div>
             <div>
@@ -151,54 +241,77 @@ export default function Admin() {
               <Label>Description</Label>
               <Textarea data-testid="admin-desc" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
-            <div className="flex gap-2">
+
+            <div className="border-t border-warm pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <Label>Size variants (optional)</Label>
+                <button type="button" onClick={addVariantRow} data-testid="admin-variant-add" className="text-xs text-terracotta hover:underline flex items-center gap-1">
+                  <Plus size={12} /> Add size
+                </button>
+              </div>
+              {form.size_variants.length === 0 && (
+                <div className="text-[11px] text-muted-warm">No variants — base price will apply.</div>
+              )}
+              {form.size_variants.map((v, i) => (
+                <div key={i} className="grid grid-cols-[1fr_90px_80px_28px] gap-2 mb-2 items-center">
+                  <Input data-testid={`admin-variant-label-${i}`} placeholder="e.g. 50g / M" value={v.label} onChange={(e) => setVariantField(i, "label", e.target.value)} />
+                  <Input data-testid={`admin-variant-price-${i}`} placeholder="₹ Price" type="number" step="0.01" value={v.price} onChange={(e) => setVariantField(i, "price", e.target.value)} />
+                  <Input data-testid={`admin-variant-stock-${i}`} placeholder="Stock" type="number" value={v.stock} onChange={(e) => setVariantField(i, "stock", e.target.value)} />
+                  <button type="button" onClick={() => removeVariantRow(i)} className="text-muted-warm hover:text-terracotta">
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 pt-2">
               <button
                 type="submit"
                 data-testid="admin-save-btn"
-                className="flex-1 amazon-orange text-black font-semibold text-sm rounded-full py-2 hover:brightness-95 transition-colors"
+                className="flex-1 bg-ink text-cream text-sm font-medium rounded-full py-2.5 hover:bg-terracotta transition-colors"
               >
                 {editingId ? "Save changes" : "Create product"}
               </button>
               {editingId && (
                 <button type="button" onClick={() => { setEditingId(null); setForm(emptyForm); }}
-                  className="text-sm border border-neutral-300 rounded-full px-4 py-2 hover:bg-neutral-100">
+                  className="text-sm border border-warm rounded-full px-4 py-2 hover:bg-parchment">
                   Cancel
                 </button>
               )}
             </div>
           </form>
 
-          <div className="bg-white border border-neutral-200 rounded-md p-4">
-            <h2 className="font-heading text-lg font-semibold mb-2">All products ({products.length})</h2>
+          <div className="bg-surface border border-warm rounded-lg p-5">
+            <h2 className="font-heading text-lg font-semibold mb-3">All products ({products.length})</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                  <tr className="border-b border-warm text-left text-[11px] uppercase tracking-widest text-muted-warm">
                     <th className="py-2">Product</th>
                     <th>Category</th>
-                    <th>Price</th>
-                    <th>Stock</th>
+                    <th>Base ₹</th>
+                    <th>Variants</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {products.map((p) => (
-                    <tr key={p.id} className="border-b border-neutral-100">
-                      <td className="py-2 flex items-center gap-2">
-                        <img src={p.image_url} className="w-10 h-10 object-contain" alt="" />
+                    <tr key={p.id} className="border-b border-warm/60">
+                      <td className="py-3 flex items-center gap-2">
+                        <img src={p.image_url} className="w-10 h-10 object-contain bg-parchment/40 rounded" alt="" />
                         <span className="line-clamp-1">{p.title}</span>
                       </td>
                       <td className="text-xs">{p.category}</td>
-                      <td>${p.price.toFixed(2)}</td>
-                      <td>{p.stock}</td>
-                      <td className="text-right">
-                        <button data-testid={`admin-edit-${p.id}`} onClick={() => edit(p)} className="link-blue hover:underline mr-2 inline-flex items-center gap-1"><Pencil size={12} /> Edit</button>
-                        <button data-testid={`admin-del-${p.id}`} onClick={() => remove(p.id)} className="text-[#B12704] hover:underline inline-flex items-center gap-1"><Trash2 size={12} /> Del</button>
+                      <td>₹{p.price.toFixed(2)}</td>
+                      <td className="text-xs">{p.size_variants?.length || 0}</td>
+                      <td className="text-right whitespace-nowrap">
+                        <button data-testid={`admin-edit-${p.id}`} onClick={() => edit(p)} className="text-ink hover:text-terracotta mr-3 inline-flex items-center gap-1"><Pencil size={12} /> Edit</button>
+                        <button data-testid={`admin-del-${p.id}`} onClick={() => remove(p.id)} className="text-terracotta hover:text-ink inline-flex items-center gap-1"><Trash2 size={12} /> Delete</button>
                       </td>
                     </tr>
                   ))}
                   {products.length === 0 && (
-                    <tr><td colSpan={5} className="py-6 text-center text-neutral-500">No products yet.</td></tr>
+                    <tr><td colSpan={5} className="py-8 text-center text-muted-warm">No products yet — try "Seed 8 demo products" above.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -206,13 +319,13 @@ export default function Admin() {
           </div>
         </TabsContent>
 
-        <TabsContent value="orders" className="mt-4">
-          <div className="bg-white border border-neutral-200 rounded-md p-4">
-            <h2 className="font-heading text-lg font-semibold mb-2">All orders ({orders.length})</h2>
+        <TabsContent value="orders" className="mt-6">
+          <div className="bg-surface border border-warm rounded-lg p-5">
+            <h2 className="font-heading text-lg font-semibold mb-3">All orders ({orders.length})</h2>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                  <th className="py-2">Order #</th>
+                <tr className="border-b border-warm text-left text-[11px] uppercase tracking-widest text-muted-warm">
+                  <th className="py-2">Order</th>
                   <th>Customer</th>
                   <th>Items</th>
                   <th>Total</th>
@@ -221,16 +334,16 @@ export default function Admin() {
               </thead>
               <tbody>
                 {orders.map((o) => (
-                  <tr key={o.id} className="border-b border-neutral-100">
-                    <td className="py-2 font-mono text-xs">{o.order_number}</td>
+                  <tr key={o.id} className="border-b border-warm/60">
+                    <td className="py-3 font-mono text-xs">{o.order_number}</td>
                     <td>{o.address?.full_name}</td>
                     <td>{o.items?.length}</td>
-                    <td>${o.total.toFixed(2)}</td>
+                    <td>₹{o.total.toFixed(2)}</td>
                     <td className="text-xs">{new Date(o.created_at).toLocaleString()}</td>
                   </tr>
                 ))}
                 {orders.length === 0 && (
-                  <tr><td colSpan={5} className="py-6 text-center text-neutral-500">No orders yet.</td></tr>
+                  <tr><td colSpan={5} className="py-8 text-center text-muted-warm">No orders yet.</td></tr>
                 )}
               </tbody>
             </table>

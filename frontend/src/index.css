@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,16 +6,17 @@
 
 body {
     margin: 0;
-    font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #F3F3F3;
-    color: #0F1111;
+    background-color: #F5EFE4;
+    color: #1F2E22;
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
-    font-family: 'Work Sans', system-ui, sans-serif;
-    letter-spacing: -0.01em;
+    font-family: 'Fraunces', ui-serif, Georgia, serif;
+    letter-spacing: -0.015em;
+    font-optical-sizing: auto;
 }
 
 code {
@@ -24,26 +25,26 @@ code {
 
 @layer base {
     :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 214 32% 19%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 36 100% 50%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 8 96% 35%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 84%;
-        --input: 0 0% 89.8%;
-        --ring: 36 100% 50%;
-        --radius: 0.375rem;
+        --background: 40 35% 93%;
+        --foreground: 138 20% 15%;
+        --card: 40 40% 98%;
+        --card-foreground: 138 20% 15%;
+        --popover: 40 40% 98%;
+        --popover-foreground: 138 20% 15%;
+        --primary: 138 25% 20%;
+        --primary-foreground: 40 40% 98%;
+        --secondary: 40 25% 88%;
+        --secondary-foreground: 138 25% 20%;
+        --muted: 40 20% 90%;
+        --muted-foreground: 138 8% 35%;
+        --accent: 20 65% 55%;
+        --accent-foreground: 40 40% 98%;
+        --destructive: 8 60% 45%;
+        --destructive-foreground: 40 40% 98%;
+        --border: 40 20% 82%;
+        --input: 40 20% 82%;
+        --ring: 20 65% 55%;
+        --radius: 0.5rem;
     }
 }
 
@@ -57,21 +58,23 @@ code {
 }
 
 @layer utilities {
-    .navy { background-color: #232F3E; }
-    .navy-2 { background-color: #131A22; }
-    .amazon-orange { background-color: #FF9900; }
-    .link-blue { color: #007185; }
-    .text-price { color: #B12704; }
+    .bg-cream { background-color: #F5EFE4; }
+    .bg-surface { background-color: #FFFFFF; }
+    .bg-ink { background-color: #1F2E22; }
+    .bg-sage { background-color: #6B8F5E; }
+    .bg-terracotta { background-color: #DC7238; }
+    .bg-parchment { background-color: #EFE5D0; }
+    .text-ink { color: #1F2E22; }
+    .text-sage { color: #6B8F5E; }
+    .text-terracotta { color: #DC7238; }
+    .text-muted-warm { color: #6E6A62; }
+    .border-warm { border-color: #E3DCC9; }
+    .ring-terracotta { --tw-ring-color: #DC7238; }
 }
 
-/* Sharp focus rings */
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid #FF9900;
-    outline-offset: 1px;
-}
-
-.search-bar-focus:focus-within {
-    box-shadow: 0 0 0 3px #FF9900;
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [role="button"]:focus-visible {
+    outline: 2px solid #DC7238;
+    outline-offset: 2px;
 }
 
 .line-clamp-2 {
@@ -86,6 +89,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+/* Subtle grain overlay hook */
+.grain {
+    background-image: radial-gradient(circle at 25% 25%, rgba(0,0,0,0.02) 1px, transparent 1px),
+                      radial-gradient(circle at 75% 75%, rgba(0,0,0,0.02) 1px, transparent 1px);
+    background-size: 6px 6px;
 }
 
 @layer base {

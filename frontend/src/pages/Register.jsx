@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LOGO } from "@/lib/assets";
 
 export default function Register() {
   const { register, error, setError } = useAuth();
@@ -19,15 +20,18 @@ export default function Register() {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-8">
-      <div className="text-center mb-4">
-        <span className="font-heading text-2xl font-bold">
-          Shop<span style={{ color: "#FF9900" }}>Kart</span>
-        </span>
-      </div>
-      <div className="bg-white border border-neutral-300 rounded-md p-6">
-        <h1 className="font-heading text-2xl font-semibold mb-4">Create account</h1>
-        <form onSubmit={submit} className="space-y-3" data-testid="register-form">
+    <div className="max-w-md mx-auto px-4 py-12">
+      <Link to="/" className="flex items-center gap-3 justify-center mb-6">
+        <img src={LOGO} alt="IWI" className="h-12 w-12 rounded-full bg-white object-cover border border-warm" />
+        <div className="leading-tight">
+          <div className="font-heading text-lg font-semibold">Innovation Window India</div>
+          <div className="text-[10px] tracking-[0.25em] uppercase text-sage">Nourish Naturally</div>
+        </div>
+      </Link>
+      <div className="bg-surface border border-warm rounded-lg p-8">
+        <h1 className="font-heading text-2xl font-semibold mb-1">Join the apothecary</h1>
+        <p className="text-sm text-muted-warm mb-5">Save orders, track shipments and check out faster.</p>
+        <form onSubmit={submit} className="space-y-4" data-testid="register-form">
           <div>
             <Label htmlFor="name">Your name</Label>
             <Input id="name" data-testid="reg-name" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -39,19 +43,19 @@ export default function Register() {
           <div>
             <Label htmlFor="password">Password</Label>
             <Input id="password" data-testid="reg-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-            <div className="text-xs text-neutral-500 mt-1">Passwords must be at least 6 characters.</div>
+            <div className="text-xs text-muted-warm mt-1">At least 6 characters.</div>
           </div>
-          {error && <div className="text-sm text-[#B12704]" data-testid="reg-error">{error}</div>}
+          {error && <div className="text-sm text-terracotta" data-testid="reg-error">{error}</div>}
           <button
             type="submit"
             data-testid="reg-submit"
-            className="w-full amazon-orange text-black font-semibold text-sm rounded-full py-2 hover:brightness-95 transition-colors"
+            className="w-full bg-ink text-cream text-sm font-medium rounded-full py-3 hover:bg-terracotta transition-colors"
           >
-            Create your ShopKart account
+            Create account
           </button>
         </form>
-        <div className="text-xs text-neutral-600 mt-3">
-          Already have an account? <Link to="/login" className="link-blue hover:underline">Sign in</Link>
+        <div className="text-xs text-muted-warm text-center mt-4">
+          Already have an account? <Link to="/login" className="text-terracotta hover:underline">Sign in</Link>
         </div>
       </div>
     </div>

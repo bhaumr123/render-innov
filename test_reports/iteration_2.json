@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 2 — Innovation Window India (IWI) apothecary pivot: full end-to-end verification of size_variants, variant-aware cart, env-driven shipping (₹6.99 flat / ₹75 free threshold), 5% tax, and IWI- order-number prefix. Backend: 23/23 pytest tests passed (auth, /api/config/shipping, product size_variants CRUD/persistence, cart variant increments vs new-line, update/remove per variant, unit_price reflects variant, checkout math under & over threshold, IWI- prefix, variant_label preserved on GET /orders, admin RBAC). Frontend: home page shows hero 'Rituals of nourishment.', category tiles (Teas/Spices/Artisanal Goods) and nav; register flow creates user + redirects to /; ProductDetail exposes variant-<label> pills; adding same product with two different sizes creates 2 rows in cart (Ashwagandhadi 60g + 120g); under-threshold cart (₹40) correctly shows Shipping ₹6.99, Tax(5%) ₹2.00, Total ₹48.99 and 'Add ₹35.00 more for complimentary shipping' hint; over-threshold cart (₹538) shows Shipping Free; checkout completes and redirects to /order-confirmation/:id with order number IWI-9BBFA77BCF; cart badge returns to 0; admin can log in as admin@shop.com/admin123, open /admin, create a new Teas product with 2 size variants (50g/₹40, 100g/₹72) via admin-variant-add rows, product appears in the table with 'Product created' toast. Design confirmed apothecary palette: cream background, dark ink green text, terracotta accent (no navy/purple).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "CORS: backend/.env still sets CORS_ORIGINS=\"*\" while CORSMiddleware uses allow_credentials=True. Starlette will still emit '*' which browsers reject for credentialed cross-origin requests. Set CORS_ORIGINS explicitly to https://shop-engine-57.preview.emergentagent.com (and any prod origins) before a split-domain deployment.",
+    "Auth cookies still set with secure=False. In production over HTTPS, set secure=True (and re-evaluate samesite if you go cross-site).",
+    "CheckoutInput.address is typed as raw dict. Consider a Pydantic AddressModel (name, street, city, state, zip, phone) so bad addresses are rejected at the API layer instead of storing empty dicts (currently checkout succeeds with {} address, which the tests actually exploit).",
+    "server.py is ~550 lines in a single file — split into routers/services (auth, products, cart, orders, admin, config) for maintainability as the app grows.",
+    "seed admin/startup is not idempotent-safe under concurrent workers — uses find_one + insert_one. With a single worker it's fine, but under multi-worker uvicorn it can race. Not blocking for this MVP."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "100% (all requested flows)"},
+  "test_credentials": "Admin: admin@shop.com / admin123 (auto-seeded). Test customers were registered dynamically with TEST_ email prefixes (password Test1234).",
+  "seed_data_creation": "8 IWI demo products already present in DB from previous seeding (Butterfly Pea Flower, Marigold Petals, TRJU Coriander Powder, Marwar Red Chilli Powder, Tata Mustard Oil, Ashwagandhadi Churna, Himalayan Forest Honey, Tulsi Japa Mala). Pytest created & cleaned up TEST_ prefixed products (variant_product, pricey_product, TEST_Variant Persist). Playwright created TEST_PW_Herbal_1784386400 which was deleted via DELETE /api/products/{id} after testing. TEST_ prefixed user accounts and orders remain in the DB for traceability (email/name starts with TEST_).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All primary IWI flows are green. Backend endpoints exercised: /api/config/shipping, /api/products (+size_variants), /api/products/categories, /api/cart/add|update|remove (variant-aware), /api/cart, /api/orders/checkout (IWI- prefix, 5% tax, ₹6.99/₹75 shipping), /api/orders, /api/admin/orders. Frontend flows exercised: home, register, product detail (variant pills, add-to-cart, header badge), cart (2 rows for 2 variants of same product, shipping ₹6.99 hint + Free above ₹75), checkout (mock payment) → /order-confirmation/:id with IWI-XXXXXXXXXX, admin panel (create product with variants). Note: the product detail 'detail-price' data-testid does not exist on the price display element — variant-switch price update was not asserted via that selector, but the cart shows correct per-variant unit prices (₹349 for 120g, ₹189 for 60g Ashwagandhadi), which confirms the variant→price binding works end-to-end. If a future test needs to assert variant-price update on the detail page itself, add data-testid=\"detail-price\" to the price element in ProductDetail.jsx.",
+  "rca of the issue": "No unresolved issues."
+}

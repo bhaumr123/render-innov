@@ -1,24 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, ShoppingCart, MapPin, ChevronDown, User as UserIcon } from "lucide-react";
+import { Search, ShoppingBag, Menu, X, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import api from "@/lib/api";
+import { LOGO } from "@/lib/assets";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from "@/components/ui/select";
 
 export default function Header() {
   const { user, logout } = useAuth();
   const { itemCount } = useCart();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState("all");
   const [categories, setCategories] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     api.get("/products/categories").then((r) => setCategories(r.data.categories || []));
@@ -28,95 +26,78 @@ export default function Header() {
     e.preventDefault();
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
-    if (cat && cat !== "all") params.set("category", cat);
     navigate(`/products?${params.toString()}`);
+    setMenuOpen(false);
   };
 
   return (
-    <header className="w-full sticky top-0 z-40">
-      {/* Top bar - Navy */}
-      <div className="navy text-white">
-        <div className="max-w-screen-2xl mx-auto flex items-center gap-2 md:gap-4 px-3 md:px-4 py-2">
-          <Link to="/" data-testid="header-logo" className="shrink-0 px-2 py-1 border border-transparent hover:border-white rounded">
-            <span className="font-heading text-xl md:text-2xl font-bold">
-              Shop<span style={{ color: "#FF9900" }}>Kart</span>
-            </span>
-            <div className="text-[10px] leading-none">.com</div>
-          </Link>
+    <header className="w-full sticky top-0 z-40 bg-cream/95 backdrop-blur-sm border-b border-warm">
+      {/* Announcement strip */}
+      <div className="bg-ink text-cream text-xs tracking-widest uppercase">
+        <div className="max-w-screen-xl mx-auto px-4 py-1.5 text-center">
+          Complimentary shipping on orders above ₹75 · Free returns within 14 days
+        </div>
+      </div>
 
-          {/* Deliver-to */}
-          <div className="hidden md:flex items-center gap-1 px-2 py-1 rounded border border-transparent hover:border-white cursor-default">
-            <MapPin size={16} />
-            <div className="leading-tight text-xs">
-              <div className="text-neutral-300">Deliver to</div>
-              <div className="font-semibold text-sm">All India</div>
-            </div>
+      {/* Main bar */}
+      <div className="max-w-screen-xl mx-auto flex items-center gap-4 px-4 md:px-6 py-3">
+        <Link to="/" data-testid="header-logo" className="flex items-center gap-3 shrink-0">
+          <img src={LOGO} alt="Innovation Window India" className="h-10 w-10 rounded-full object-cover bg-white border border-warm" />
+          <div className="leading-tight hidden sm:block">
+            <div className="font-heading text-lg font-semibold text-ink">Innovation Window India</div>
+            <div className="text-[10px] tracking-[0.2em] uppercase text-sage">Nourish Naturally</div>
           </div>
+        </Link>
 
-          {/* Search bar */}
-          <form onSubmit={onSearch} data-testid="header-search-form" className="flex-1 flex items-stretch rounded-md overflow-hidden search-bar-focus">
-            <div className="bg-neutral-100 text-black">
-              <Select value={cat} onValueChange={setCat}>
-                <SelectTrigger data-testid="header-category-select" className="h-full min-w-[80px] md:min-w-[110px] rounded-none border-0 bg-neutral-100 focus:ring-0 text-xs">
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" data-testid="cat-opt-all">All</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c} value={c} data-testid={`cat-opt-${c}`}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        {/* Desktop nav */}
+        <nav className="hidden md:flex items-center gap-6 ml-4 text-sm">
+          <Link to="/products" data-testid="nav-shop-all" className="text-ink hover:text-terracotta transition-colors">Shop all</Link>
+          {categories.slice(0, 4).map((c) => (
+            <Link
+              key={c}
+              to={`/products?category=${encodeURIComponent(c)}`}
+              data-testid={`nav-${c}`}
+              className="text-ink hover:text-terracotta transition-colors"
+            >
+              {c}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Right */}
+        <div className="ml-auto flex items-center gap-2">
+          <form onSubmit={onSearch} data-testid="header-search-form" className="hidden lg:flex items-center gap-2 bg-white border border-warm rounded-full px-3 py-1.5 focus-within:border-terracotta">
+            <Search size={16} className="text-muted-warm" />
             <input
               data-testid="header-search-input"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               type="text"
-              placeholder="Search ShopKart"
-              className="flex-1 px-3 py-2 text-black text-sm outline-none min-w-0"
+              placeholder="Search teas, spices…"
+              className="bg-transparent outline-none text-sm w-52"
             />
-            <button
-              type="submit"
-              data-testid="header-search-btn"
-              aria-label="Search"
-              className="amazon-orange hover:brightness-95 text-black px-3 md:px-4 flex items-center justify-center transition-colors"
-            >
-              <Search size={20} />
-            </button>
           </form>
 
-          {/* Account */}
           <DropdownMenu>
-            <DropdownMenuTrigger data-testid="header-account-btn" className="hidden md:flex items-center px-2 py-1 rounded border border-transparent hover:border-white text-left">
-              <div className="leading-tight text-xs">
-                <div className="text-neutral-300">Hello, {user ? user.name.split(" ")[0] : "sign in"}</div>
-                <div className="font-semibold text-sm flex items-center gap-1">
-                  Account & Lists <ChevronDown size={12} />
-                </div>
-              </div>
+            <DropdownMenuTrigger data-testid="header-account-btn" className="p-2 rounded-full hover:bg-parchment transition-colors">
+              <UserIcon size={20} className="text-ink" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               {!user ? (
                 <>
-                  <DropdownMenuItem asChild>
-                    <Link to="/login" data-testid="menu-login">Sign in</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/register" data-testid="menu-register">Create account</Link>
-                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild><Link to="/login" data-testid="menu-login">Sign in</Link></DropdownMenuItem>
+                  <DropdownMenuItem asChild><Link to="/register" data-testid="menu-register">Create account</Link></DropdownMenuItem>
                 </>
               ) : (
                 <>
-                  <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="text-xs text-muted-warm">Signed in as</div>
+                    <div className="text-sm font-medium truncate">{user.email}</div>
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to="/orders" data-testid="menu-orders">Your orders</Link>
-                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild><Link to="/orders" data-testid="menu-orders">Your orders</Link></DropdownMenuItem>
                   {user.role === "admin" && (
-                    <DropdownMenuItem asChild>
-                      <Link to="/admin" data-testid="menu-admin">Admin panel</Link>
-                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild><Link to="/admin" data-testid="menu-admin">Admin panel</Link></DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} data-testid="menu-logout">Sign out</DropdownMenuItem>
@@ -125,62 +106,55 @@ export default function Header() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Orders */}
-          <Link
-            to={user ? "/orders" : "/login"}
-            data-testid="header-orders-link"
-            className="hidden lg:block px-2 py-1 rounded border border-transparent hover:border-white leading-tight text-xs"
-          >
-            <div className="text-neutral-300">Returns</div>
-            <div className="font-semibold text-sm">& Orders</div>
-          </Link>
-
-          {/* Cart */}
           <Link
             to="/cart"
             data-testid="header-cart-link"
-            className="flex items-end gap-1 px-2 py-1 rounded border border-transparent hover:border-white relative"
+            className="relative p-2 rounded-full hover:bg-parchment transition-colors"
           >
-            <div className="relative">
-              <ShoppingCart size={26} />
+            <ShoppingBag size={20} className="text-ink" />
+            {itemCount > 0 && (
               <span
                 data-testid="header-cart-count"
-                className="absolute -top-1 -right-2 amazon-orange text-black text-xs font-bold rounded-full px-1.5 min-w-[20px] text-center leading-4"
+                className="absolute -top-0.5 -right-0.5 bg-terracotta text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center"
               >
                 {itemCount}
               </span>
-            </div>
-            <span className="hidden md:inline font-semibold text-sm">Cart</span>
+            )}
           </Link>
 
-          {/* Mobile account icon */}
-          <Link to={user ? "/orders" : "/login"} className="md:hidden">
-            <UserIcon size={22} />
-          </Link>
+          <button
+            data-testid="mobile-menu-btn"
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="md:hidden p-2 rounded-full hover:bg-parchment"
+          >
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
+      </div>
 
-        {/* Sub-nav */}
-        <div className="navy-2 text-white text-xs md:text-sm">
-          <div className="max-w-screen-2xl mx-auto flex items-center gap-1 md:gap-3 px-3 md:px-4 py-1.5 overflow-x-auto">
-            <Link data-testid="subnav-all" to="/products" className="px-2 py-1 rounded border border-transparent hover:border-white whitespace-nowrap font-semibold">All</Link>
-            {categories.slice(0, 8).map((c) => (
-              <Link
-                key={c}
-                to={`/products?category=${encodeURIComponent(c)}`}
-                data-testid={`subnav-${c}`}
-                className="px-2 py-1 rounded border border-transparent hover:border-white whitespace-nowrap"
-              >
+      {/* Mobile menu */}
+      {menuOpen && (
+        <div className="md:hidden border-t border-warm bg-cream px-4 py-4">
+          <form onSubmit={onSearch} className="flex items-center gap-2 bg-white border border-warm rounded-full px-3 py-2 mb-3">
+            <Search size={16} className="text-muted-warm" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              type="text"
+              placeholder="Search…"
+              className="bg-transparent outline-none text-sm flex-1"
+            />
+          </form>
+          <nav className="flex flex-col text-sm">
+            <Link to="/products" onClick={() => setMenuOpen(false)} className="py-2 border-b border-warm">Shop all</Link>
+            {categories.map((c) => (
+              <Link key={c} to={`/products?category=${encodeURIComponent(c)}`} onClick={() => setMenuOpen(false)} className="py-2 border-b border-warm">
                 {c}
               </Link>
             ))}
-            {user?.role === "admin" && (
-              <Link to="/admin" data-testid="subnav-admin" className="px-2 py-1 rounded border border-transparent hover:border-white whitespace-nowrap ml-auto font-semibold" style={{ color: "#FF9900" }}>
-                Admin
-              </Link>
-            )}
-          </div>
+          </nav>
         </div>
-      </div>
+      )}
     </header>
   );
 }

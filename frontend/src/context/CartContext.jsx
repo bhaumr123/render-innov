@@ -29,19 +29,19 @@ export function CartProvider({ children }) {
     refresh();
   }, [refresh]);
 
-  const addToCart = async (product_id, quantity = 1) => {
-    const { data } = await api.post("/cart/add", { product_id, quantity });
+  const addToCart = async (product_id, quantity = 1, variant_label = "") => {
+    const { data } = await api.post("/cart/add", { product_id, quantity, variant_label });
     setCart(data);
     return data;
   };
 
-  const updateQty = async (product_id, quantity) => {
-    const { data } = await api.post("/cart/update", { product_id, quantity });
+  const updateQty = async (product_id, quantity, variant_label = "") => {
+    const { data } = await api.post("/cart/update", { product_id, quantity, variant_label });
     setCart(data);
   };
 
-  const removeItem = async (product_id) => {
-    const { data } = await api.post("/cart/remove", { product_id, quantity: 0 });
+  const removeItem = async (product_id, variant_label = "") => {
+    const { data } = await api.post("/cart/remove", { product_id, quantity: 0, variant_label });
     setCart(data);
   };
 

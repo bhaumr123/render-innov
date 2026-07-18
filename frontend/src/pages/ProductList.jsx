@@ -4,8 +4,6 @@ import api from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Star } from "lucide-react";
 
 export default function ProductList() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -13,8 +11,7 @@ export default function ProductList() {
   const category = searchParams.get("category") || "";
   const sort = searchParams.get("sort") || "";
 
-  const [priceRange, setPriceRange] = useState([0, 2000]);
-  const [minRating, setMinRating] = useState(0);
+  const [priceRange, setPriceRange] = useState([0, 500]);
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -34,13 +31,11 @@ export default function ProductList() {
     params.set("max_price", priceRange[1]);
     params.set("limit", "60");
     api.get(`/products?${params.toString()}`).then((r) => {
-      let list = r.data.items || [];
-      if (minRating > 0) list = list.filter((p) => p.rating >= minRating);
-      setItems(list);
+      setItems(r.data.items || []);
       setTotal(r.data.total || 0);
       setLoading(false);
     });
-  }, [q, category, sort, priceRange, minRating]);
+  }, [q, category, sort, priceRange]);
 
   const setParam = (k, v) => {
     const p = new URLSearchParams(searchParams);
@@ -50,18 +45,44 @@ export default function ProductList() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto px-3 md:px-4 py-4">
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-4">
-        {/* Sidebar filters */}
-        <aside className="bg-white border border-neutral-200 rounded-md p-4 h-fit">
+    <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-8">
+      {/* Header row */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 mb-6">
+        <div>
+          <div className="text-[11px] tracking-[0.3em] uppercase text-sage mb-1">
+            {q ? `Search · "${q}"` : category || "The shelf"}
+          </div>
+          <h1 className="font-heading text-3xl md:text-4xl font-semibold">
+            {category || (q ? `Results` : "Shop all")}
+          </h1>
+          <div className="text-sm text-muted-warm mt-1">{items.length} of {total} pieces</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs uppercase tracking-widest text-muted-warm">Sort</span>
+          <Select value={sort || "featured"} onValueChange={(v) => setParam("sort", v === "featured" ? "" : v)}>
+            <SelectTrigger data-testid="sort-select" className="w-[200px] h-9 bg-surface text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="featured">Featured</SelectItem>
+              <SelectItem value="price_asc">Price · low to high</SelectItem>
+              <SelectItem value="price_desc">Price · high to low</SelectItem>
+              <SelectItem value="rating">Most loved</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
+        <aside className="bg-surface border border-warm rounded-lg p-5 h-fit">
           <div>
-            <div className="font-heading font-semibold text-sm mb-2">Category</div>
-            <ul className="space-y-1 text-sm">
+            <div className="font-heading font-semibold text-sm uppercase tracking-widest text-muted-warm mb-3">Category</div>
+            <ul className="space-y-1.5 text-sm">
               <li>
                 <button
                   data-testid="filter-cat-all"
                   onClick={() => setParam("category", "")}
-                  className={`text-left w-full ${!category ? "font-bold" : "link-blue hover:underline"}`}
+                  className={`text-left w-full py-1 ${!category ? "text-terracotta font-semibold" : "text-ink hover:text-terracotta transition-colors"}`}
                 >
                   All categories
                 </button>
@@ -71,7 +92,7 @@ export default function ProductList() {
                   <button
                     data-testid={`filter-cat-${c}`}
                     onClick={() => setParam("category", c)}
-                    className={`text-left w-full ${category === c ? "font-bold" : "link-blue hover:underline"}`}
+                    className={`text-left w-full py-1 ${category === c ? "text-terracotta font-semibold" : "text-ink hover:text-terracotta transition-colors"}`}
                   >
                     {c}
                   </button>
@@ -80,79 +101,34 @@ export default function ProductList() {
             </ul>
           </div>
 
-          <div className="mt-6">
-            <div className="font-heading font-semibold text-sm mb-2">Price</div>
+          <div className="mt-8">
+            <div className="font-heading font-semibold text-sm uppercase tracking-widest text-muted-warm mb-3">Price</div>
             <Slider
               data-testid="filter-price-slider"
               value={priceRange}
               min={0}
-              max={2000}
-              step={10}
+              max={500}
+              step={5}
               onValueChange={setPriceRange}
               className="mt-3"
             />
-            <div className="text-xs text-neutral-600 mt-2 flex justify-between">
-              <span>${priceRange[0]}</span>
-              <span>${priceRange[1]}</span>
+            <div className="text-xs text-muted-warm mt-3 flex justify-between">
+              <span>₹{priceRange[0]}</span>
+              <span>₹{priceRange[1]}</span>
             </div>
-          </div>
-
-          <div className="mt-6">
-            <div className="font-heading font-semibold text-sm mb-2">Customer rating</div>
-            {[4, 3, 2, 1, 0].map((r) => (
-              <label key={r} className="flex items-center gap-2 text-sm py-1 cursor-pointer">
-                <Checkbox
-                  data-testid={`filter-rating-${r}`}
-                  checked={minRating === r}
-                  onCheckedChange={() => setMinRating(minRating === r ? 0 : r)}
-                />
-                <span className="flex items-center gap-0.5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} size={14} className={i < r ? "fill-yellow-400 text-yellow-400" : "text-neutral-300"} />
-                  ))}
-                  <span className="ml-1 text-neutral-700">{r === 0 ? "Any" : `& up`}</span>
-                </span>
-              </label>
-            ))}
           </div>
         </aside>
 
-        {/* Product grid */}
         <div>
-          <div className="bg-white border border-neutral-200 rounded-md px-4 py-3 flex items-center justify-between mb-4">
-            <div className="text-sm">
-              <span className="text-neutral-600">
-                {q ? `Results for "${q}"` : category ? category : "All products"}
-              </span>
-              <span className="ml-2 text-neutral-500">({items.length} of {total})</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-neutral-600">Sort by</span>
-              <Select value={sort || "featured"} onValueChange={(v) => setParam("sort", v === "featured" ? "" : v)}>
-                <SelectTrigger data-testid="sort-select" className="w-[180px] h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="featured">Featured</SelectItem>
-                  <SelectItem value="price_asc">Price: Low to High</SelectItem>
-                  <SelectItem value="price_desc">Price: High to Low</SelectItem>
-                  <SelectItem value="rating">Avg. Customer Review</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
           {loading ? (
-            <div className="text-neutral-500 text-sm">Loading…</div>
+            <div className="text-muted-warm text-sm">Loading…</div>
           ) : items.length === 0 ? (
-            <div className="bg-white border border-neutral-200 rounded-md p-8 text-center text-neutral-600">
+            <div className="bg-surface border border-warm rounded-lg p-10 text-center text-muted-warm">
               No products match your filters.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {items.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
+              {items.map((p) => <ProductCard key={p.id} product={p} />)}
             </div>
           )}
         </div>

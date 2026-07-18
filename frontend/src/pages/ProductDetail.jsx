@@ -1,145 +1,151 @@
-import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { toast } from "sonner";
-import { Star, Truck, ShieldCheck } from "lucide-react";
+import { Leaf, Package, ShieldCheck, ChevronLeft } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
 export default function ProductDetail() {
   const { id } = useParams();
   const [p, setP] = useState(null);
   const [qty, setQty] = useState(1);
-  const [selectedImg, setSelectedImg] = useState(0);
+  const [selectedVariant, setSelectedVariant] = useState("");
   const { addToCart } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.get(`/products/${id}`).then((r) => setP(r.data)).catch(() => setP(false));
+    api.get(`/products/${id}`).then((r) => {
+      setP(r.data);
+      const variants = r.data.size_variants || [];
+      if (variants.length > 0) setSelectedVariant(variants[0].label);
+    }).catch(() => setP(false));
   }, [id]);
 
-  if (p === null) return <div className="max-w-screen-2xl mx-auto p-6 text-neutral-500">Loading…</div>;
-  if (p === false) return <div className="max-w-screen-2xl mx-auto p-6">Product not found.</div>;
+  const variantPrice = useMemo(() => {
+    if (!p) return 0;
+    const v = (p.size_variants || []).find((x) => x.label === selectedVariant);
+    return v ? Number(v.price) : Number(p.price);
+  }, [p, selectedVariant]);
 
-  const images = p.images?.length ? p.images : [p.image_url].filter(Boolean);
-  const mainImg = images[selectedImg] || p.image_url;
+  const variantStock = useMemo(() => {
+    if (!p) return 0;
+    const v = (p.size_variants || []).find((x) => x.label === selectedVariant);
+    return v ? Number(v.stock ?? p.stock) : Number(p.stock);
+  }, [p, selectedVariant]);
+
+  if (p === null) return <div className="max-w-screen-xl mx-auto p-6 text-muted-warm">Loading…</div>;
+  if (p === false) return <div className="max-w-screen-xl mx-auto p-6">Product not found.</div>;
+
+  const hasVariants = (p.size_variants || []).length > 0;
 
   const handleAdd = async () => {
-    if (!user) {
-      navigate("/login");
+    if (!user) return navigate("/login");
+    if (hasVariants && !selectedVariant) {
+      toast.error("Please select a size");
       return;
     }
-    await addToCart(p.id, qty);
-    toast.success(`Added ${qty} to cart`);
+    await addToCart(p.id, qty, selectedVariant || "");
+    toast.success(`Added ${qty} × ${p.title}${selectedVariant ? ` (${selectedVariant})` : ""}`);
   };
 
   const handleBuy = async () => {
-    if (!user) {
-      navigate("/login");
-      return;
-    }
-    await addToCart(p.id, qty);
+    if (!user) return navigate("/login");
+    if (hasVariants && !selectedVariant) return toast.error("Please select a size");
+    await addToCart(p.id, qty, selectedVariant || "");
     navigate("/checkout");
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto px-4 py-4">
-      <div className="bg-white border border-neutral-200 rounded-md p-4 md:p-6 grid grid-cols-1 md:grid-cols-[100px_1fr_320px] gap-4">
-        {/* Thumbnails */}
-        <div className="flex md:flex-col gap-2 order-2 md:order-1">
-          {images.map((src, i) => (
-            <button
-              key={i}
-              onClick={() => setSelectedImg(i)}
-              data-testid={`product-thumb-${i}`}
-              className={`w-16 h-16 border rounded overflow-hidden ${selectedImg === i ? "border-[#FF9900] border-2" : "border-neutral-300"}`}
-            >
-              <img src={src} className="w-full h-full object-contain" alt="" />
-            </button>
-          ))}
+    <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-6">
+      <Link to="/products" className="inline-flex items-center gap-1 text-sm text-muted-warm hover:text-ink mb-4 transition-colors">
+        <ChevronLeft size={16} /> Back to shop
+      </Link>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+        <div className="bg-surface border border-warm rounded-lg p-6 flex items-center justify-center aspect-square">
+          <img src={p.image_url} alt={p.title} className="max-w-full max-h-full object-contain" />
         </div>
 
-        {/* Main image */}
-        <div className="order-1 md:order-2">
-          <div className="aspect-square bg-white rounded flex items-center justify-center">
-            <img src={mainImg} alt={p.title} className="max-h-full max-w-full object-contain" />
+        <div>
+          <div className="text-[11px] tracking-[0.3em] uppercase text-sage mb-2">{p.category}</div>
+          <h1 className="font-heading text-3xl md:text-4xl font-semibold text-ink leading-tight">
+            {p.title}
+          </h1>
+          {p.brand && <div className="text-sm text-muted-warm mt-1">by {p.brand}</div>}
+
+          <div className="mt-5 flex items-baseline gap-2">
+            <span className="font-heading text-3xl font-semibold text-ink">₹{variantPrice.toFixed(2)}</span>
+            {selectedVariant && <span className="text-sm text-muted-warm">/ {selectedVariant}</span>}
           </div>
-        </div>
 
-        {/* Info & buy box */}
-        <div className="order-3 flex flex-col gap-3">
-          <div>
-            {p.brand && <div className="link-blue text-xs">{p.brand}</div>}
-            <h1 className="font-heading text-xl md:text-2xl font-semibold leading-tight">{p.title}</h1>
-            <div className="flex items-center gap-2 mt-1 text-sm">
-              <div className="flex items-center">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} size={16} className={i < Math.round(p.rating) ? "fill-yellow-400 text-yellow-400" : "text-neutral-300"} />
+          <p className="text-sm text-muted-warm leading-relaxed mt-5 max-w-md">
+            {p.description}
+          </p>
+
+          {hasVariants && (
+            <div className="mt-6">
+              <div className="text-xs uppercase tracking-widest text-muted-warm mb-2">Choose a size</div>
+              <div className="flex flex-wrap gap-2">
+                {(p.size_variants || []).map((v) => (
+                  <button
+                    key={v.label}
+                    data-testid={`variant-${v.label}`}
+                    onClick={() => setSelectedVariant(v.label)}
+                    className={`px-4 py-2 rounded-full text-sm border transition-colors ${
+                      selectedVariant === v.label
+                        ? "bg-ink text-cream border-ink"
+                        : "bg-surface border-warm text-ink hover:border-ink"
+                    }`}
+                  >
+                    {v.label} · ₹{Number(v.price).toFixed(2)}
+                  </button>
                 ))}
               </div>
-              <span className="link-blue">{p.reviews_count || 0} ratings</span>
+            </div>
+          )}
+
+          <div className="mt-6 flex items-center gap-3">
+            <div className="text-xs uppercase tracking-widest text-muted-warm">Qty</div>
+            <div className="inline-flex items-center border border-warm rounded-full bg-surface">
+              <button
+                onClick={() => setQty(Math.max(1, qty - 1))}
+                data-testid="qty-dec"
+                className="w-9 h-9 rounded-l-full hover:bg-parchment transition-colors"
+              >−</button>
+              <span className="w-8 text-center text-sm" data-testid="qty-value">{qty}</span>
+              <button
+                onClick={() => setQty(qty + 1)}
+                data-testid="qty-inc"
+                className="w-9 h-9 rounded-r-full hover:bg-parchment transition-colors"
+              >+</button>
             </div>
           </div>
 
-          <hr className="border-neutral-200" />
-
-          <div>
-            <div className="text-xs text-neutral-600">Price:</div>
-            <div className="text-price">
-              <span className="text-sm align-top">$</span>
-              <span className="text-3xl font-bold">{Math.floor(p.price)}</span>
-              <span className="text-sm align-top">{(p.price % 1).toFixed(2).slice(1)}</span>
-            </div>
-            <div className="text-xs text-neutral-600 mt-1">FREE delivery on orders over $35</div>
-          </div>
-
-          <div className="text-sm text-neutral-800">{p.description}</div>
-
-          {/* Buy box */}
-          <div className="border border-neutral-200 rounded-md p-3 space-y-2 mt-2">
-            {p.stock > 0 ? (
-              <div className="text-lg font-semibold text-[#067D62]">In Stock</div>
-            ) : (
-              <div className="text-lg font-semibold text-[#B12704]">Out of Stock</div>
-            )}
-            <div className="flex items-center gap-2 text-xs text-neutral-700">
-              <Truck size={14} /> Fast, free shipping
-            </div>
-            <div className="flex items-center gap-2 text-xs text-neutral-700">
-              <ShieldCheck size={14} /> Secure transaction
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm">Qty:</span>
-              <Select value={String(qty)} onValueChange={(v) => setQty(Number(v))}>
-                <SelectTrigger data-testid="qty-select" className="w-20 h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: Math.min(10, p.stock || 10) }).map((_, i) => (
-                    <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleAdd}
               data-testid="detail-add-btn"
-              disabled={p.stock <= 0}
-              className="w-full amazon-orange text-black font-semibold text-sm rounded-full py-2 hover:brightness-95 transition-colors disabled:opacity-50"
+              disabled={variantStock <= 0}
+              className="flex-1 bg-ink text-cream text-sm font-medium rounded-full py-3.5 px-6 hover:bg-terracotta transition-colors disabled:opacity-50"
             >
-              Add to Cart
+              Add to cart
             </button>
             <button
               onClick={handleBuy}
               data-testid="detail-buy-btn"
-              disabled={p.stock <= 0}
-              className="w-full text-black font-semibold text-sm rounded-full py-2 hover:brightness-95 transition-colors disabled:opacity-50"
-              style={{ backgroundColor: "#F7CA00" }}
+              disabled={variantStock <= 0}
+              className="flex-1 border border-ink text-ink text-sm font-medium rounded-full py-3.5 px-6 hover:bg-ink hover:text-cream transition-colors disabled:opacity-50"
             >
-              Buy Now
+              Buy now
             </button>
+          </div>
+
+          <div className="mt-8 border-t border-warm pt-6 space-y-2 text-sm text-muted-warm">
+            <div className="flex items-center gap-2"><Package size={14} className="text-sage" /> Flat ₹6.99 shipping · free above ₹75</div>
+            <div className="flex items-center gap-2"><Leaf size={14} className="text-sage" /> Ethically sourced · small-batch</div>
+            <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-sage" /> 14-day easy returns</div>
           </div>
         </div>
       </div>

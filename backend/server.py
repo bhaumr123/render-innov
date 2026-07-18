@@ -100,9 +100,10 @@ class ProductIn(BaseModel):
     stock: int = 100
     image_url: str = ""
     images: List[str] = []
-    rating: float = 4.5
+    rating: float = 4.9
     reviews_count: int = 0
-    brand: str = ""
+    brand: str = "IWI"
+    size_variants: List[dict] = []  # [{"label":"50g","price":12.0,"stock":50}]
 
 
 class ProductOut(ProductIn):
@@ -113,11 +114,14 @@ class ProductOut(ProductIn):
 class CartItemIn(BaseModel):
     product_id: str
     quantity: int = 1
+    variant_label: str = ""
 
 
 class CartItemOut(BaseModel):
     product_id: str
     quantity: int
+    variant_label: str = ""
+    unit_price: float = 0
     product: Optional[ProductOut] = None
 
 
@@ -168,9 +172,10 @@ def product_doc_to_out(doc: dict) -> dict:
         "stock": int(doc.get("stock", 0)),
         "image_url": doc.get("image_url", ""),
         "images": doc.get("images", []),
-        "rating": float(doc.get("rating", 4.5)),
+        "rating": float(doc.get("rating", 4.9)),
         "reviews_count": int(doc.get("reviews_count", 0)),
-        "brand": doc.get("brand", ""),
+        "brand": doc.get("brand", "IWI"),
+        "size_variants": doc.get("size_variants", []),
         "created_at": doc.get("created_at", datetime.now(timezone.utc).isoformat()),
     }
 
@@ -324,18 +329,44 @@ async def _get_cart_items(user_id: str) -> List[dict]:
             prod = await db.products.find_one({"_id": ObjectId(it["product_id"])})
         except Exception:
             prod = None
+        variant_label = it.get("variant_label", "")
+        unit_price = 0
+        if prod:
+            unit_price = float(prod.get("price", 0))
+            for v in prod.get("size_variants", []) or []:
+                if v.get("label") == variant_label:
+                    unit_price = float(v.get("price", unit_price))
+                    break
         out.append({
             "product_id": it["product_id"],
             "quantity": it["quantity"],
+            "variant_label": variant_label,
+            "unit_price": unit_price,
             "product": product_doc_to_out(prod) if prod else None,
         })
     return out
 
 
+def _shipping_for(subtotal: float) -> float:
+    flat = float(os.environ.get("FLAT_SHIPPING_FEE", "6.99"))
+    threshold = float(os.environ.get("FREE_SHIPPING_THRESHOLD", "75"))
+    if subtotal <= 0:
+        return 0.0
+    return 0.0 if subtotal >= threshold else flat
+
+
+@api_router.get("/config/shipping")
+async def get_shipping_config():
+    return {
+        "flat_fee": float(os.environ.get("FLAT_SHIPPING_FEE", "6.99")),
+        "free_threshold": float(os.environ.get("FREE_SHIPPING_THRESHOLD", "75")),
+    }
+
+
 @api_router.get("/cart")
 async def get_cart(user: dict = Depends(get_current_user)):
     items = await _get_cart_items(user["id"])
-    subtotal = sum((i["product"]["price"] * i["quantity"]) for i in items if i["product"])
+    subtotal = sum((i["unit_price"] * i["quantity"]) for i in items if i["product"])
     return {"items": items, "subtotal": round(subtotal, 2)}
 
 
@@ -347,16 +378,17 @@ async def add_to_cart(payload: CartItemIn, user: dict = Depends(get_current_user
         raise HTTPException(status_code=400, detail="Invalid product id")
     if not prod:
         raise HTTPException(status_code=404, detail="Product not found")
+    variant_label = payload.variant_label or ""
     cart = await db.carts.find_one({"user_id": user["id"]})
     items = (cart or {}).get("items", [])
     found = False
     for it in items:
-        if it["product_id"] == payload.product_id:
+        if it["product_id"] == payload.product_id and it.get("variant_label", "") == variant_label:
             it["quantity"] += payload.quantity
             found = True
             break
     if not found:
-        items.append({"product_id": payload.product_id, "quantity": payload.quantity})
+        items.append({"product_id": payload.product_id, "quantity": payload.quantity, "variant_label": variant_label})
     await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": items}}, upsert=True)
     return await get_cart(user)
 
@@ -365,11 +397,12 @@ async def add_to_cart(payload: CartItemIn, user: dict = Depends(get_current_user
 async def update_cart_item(payload: CartItemIn, user: dict = Depends(get_current_user)):
     cart = await db.carts.find_one({"user_id": user["id"]})
     items = (cart or {}).get("items", [])
+    variant_label = payload.variant_label or ""
     if payload.quantity <= 0:
-        items = [it for it in items if it["product_id"] != payload.product_id]
+        items = [it for it in items if not (it["product_id"] == payload.product_id and it.get("variant_label", "") == variant_label)]
     else:
         for it in items:
-            if it["product_id"] == payload.product_id:
+            if it["product_id"] == payload.product_id and it.get("variant_label", "") == variant_label:
                 it["quantity"] = payload.quantity
                 break
     await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": items}}, upsert=True)
@@ -379,7 +412,9 @@ async def update_cart_item(payload: CartItemIn, user: dict = Depends(get_current
 @api_router.post("/cart/remove")
 async def remove_cart_item(payload: CartItemIn, user: dict = Depends(get_current_user)):
     cart = await db.carts.find_one({"user_id": user["id"]})
-    items = [it for it in (cart or {}).get("items", []) if it["product_id"] != payload.product_id]
+    variant_label = payload.variant_label or ""
+    items = [it for it in (cart or {}).get("items", [])
+             if not (it["product_id"] == payload.product_id and it.get("variant_label", "") == variant_label)]
     await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": items}}, upsert=True)
     return await get_cart(user)
 
@@ -396,9 +431,9 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
     items = await _get_cart_items(user["id"])
     if not items:
         raise HTTPException(status_code=400, detail="Cart is empty")
-    subtotal = sum((i["product"]["price"] * i["quantity"]) for i in items if i["product"])
-    tax = round(subtotal * 0.08, 2)
-    shipping = 0 if subtotal >= 35 else 4.99
+    subtotal = sum((i["unit_price"] * i["quantity"]) for i in items if i["product"])
+    tax = round(subtotal * 0.05, 2)
+    shipping = _shipping_for(subtotal)
     total = round(subtotal + tax + shipping, 2)
 
     order = {
@@ -406,8 +441,9 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
         "items": [{
             "product_id": i["product_id"],
             "title": i["product"]["title"] if i["product"] else "",
-            "price": i["product"]["price"] if i["product"] else 0,
+            "price": i["unit_price"],
             "quantity": i["quantity"],
+            "variant_label": i.get("variant_label", ""),
             "image_url": i["product"]["image_url"] if i["product"] else "",
         } for i in items],
         "address": payload.address,
@@ -418,7 +454,7 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
         "total": total,
         "status": "confirmed",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "order_number": "SK-" + uuid.uuid4().hex[:10].upper(),
+        "order_number": "IWI-" + uuid.uuid4().hex[:10].upper(),
     }
     res = await db.orders.insert_one(order)
     await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": []}}, upsert=True)
@@ -466,7 +502,7 @@ async def list_all_orders(_: dict = Depends(require_admin)):
 # ---------- Root ----------
 @api_router.get("/")
 async def root():
-    return {"message": "ShopKart API", "version": "1.0"}
+    return {"message": "Innovation Window India API", "version": "1.0"}
 
 
 app.include_router(api_router)
