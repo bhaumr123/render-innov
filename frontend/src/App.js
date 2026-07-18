@@ -7,6 +7,7 @@ import { CartProvider } from "@/context/CartContext";
 import { WishlistProvider } from "@/context/WishlistContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import MobileNav from "@/components/MobileNav";
 import Home from "@/pages/Home";
 import ProductList from "@/pages/ProductList";
 import ProductDetail from "@/pages/ProductDetail";
@@ -30,7 +31,7 @@ function App() {
           <CartProvider>
             <WishlistProvider>
               <Header />
-              <main className="flex-1">
+              <main className="flex-1 pb-16 md:pb-0">
                 <Routes>
                   <Route path="/" element={<Home />} />
                   <Route path="/products" element={<ProductList />} />
@@ -48,6 +49,7 @@ function App() {
                 </Routes>
               </main>
               <Footer />
+              <MobileNav />
               <Toaster position="top-center" richColors />
             </WishlistProvider>
           </CartProvider>
