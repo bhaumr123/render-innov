@@ -11,7 +11,7 @@ export default function ProductList() {
   const category = searchParams.get("category") || "";
   const sort = searchParams.get("sort") || "";
 
-  const [priceRange, setPriceRange] = useState([0, 500]);
+  const [priceRange, setPriceRange] = useState([0, 2000]);
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -107,8 +107,8 @@ export default function ProductList() {
               data-testid="filter-price-slider"
               value={priceRange}
               min={0}
-              max={500}
-              step={5}
+              max={2000}
+              step={10}
               onValueChange={setPriceRange}
               className="mt-3"
             />
