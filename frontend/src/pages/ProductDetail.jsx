@@ -6,16 +6,12 @@ import { Leaf, Package, ShieldCheck, ChevronLeft, Star } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import Reviews from "@/components/Reviews";
-import WishlistButton from "@/components/WishlistButton";
-import SmartImage from "@/components/SmartImage";
-import ImageLightbox, { ZoomHint } from "@/components/ImageLightbox";
 
 export default function ProductDetail() {
   const { id } = useParams();
   const [p, setP] = useState(null);
   const [qty, setQty] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState("");
-  const [zoomOpen, setZoomOpen] = useState(false);
   const { addToCart } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -69,21 +65,9 @@ export default function ProductDetail() {
       </Link>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-        <div
-          onClick={() => setZoomOpen(true)}
-          className="group bg-surface border border-warm rounded-xl p-8 flex items-center justify-center aspect-square cursor-zoom-in relative overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-        >
-          <WishlistButton productId={p.id} size={18} className="absolute top-3 right-3 h-9 w-9 z-10" />
-          <ZoomHint className="absolute bottom-3 left-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity" />
-          <SmartImage
-            src={p.image_url}
-            alt={p.title}
-            eager
-            className="w-full h-full group-hover:scale-[1.03] transition-transform duration-500 ease-out"
-          />
+        <div className="bg-surface border border-warm rounded-lg p-6 flex items-center justify-center aspect-square">
+          <img src={p.image_url} alt={p.title} className="max-w-full max-h-full object-contain" />
         </div>
-
-        <ImageLightbox src={p.image_url} alt={p.title} open={zoomOpen} onClose={() => setZoomOpen(false)} />
 
         <div>
           <div className="text-[11px] tracking-[0.3em] uppercase text-sage mb-2">{p.category}</div>
