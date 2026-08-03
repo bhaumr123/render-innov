@@ -27,15 +27,32 @@ Brand: **Innovation Window India** — Tagline: *Nourish Naturally*
 - **UI/UX**: apothecary palette, Fraunces serif headings, DM Sans body, IWI logo integrated in header/footer/auth screens.
 - **Seed catalog (8 products)**: Butterfly Pea Flower Tea, Marigold Petals, TRJU Coriander Powder, Marwar Red Chilli Powder, Tata Cold-Pressed Mustard Oil, Ashwagandhadi Churna, Himalayan Forest Honey, Tulsi Japa Mala — all with size variants and user-provided imagery.
 
+## Implemented (2026-08+)
+- Razorpay checkout + `payment.captured` webhook (HMAC verified).
+- Coupons (admin CRUD + `/api/coupons/apply`).
+- Product reviews with rating aggregation.
+- Wishlist context + page.
+- Mobile sticky bottom nav (MobileNav.jsx).
+- Animated customer testimonials marquee on home.
+- Tiranga soft background + Nothing OS dot-matrix header clock.
+
+## Implemented (2026-02-XX) — cPanel deployment prep
+- `backend/passenger_wsgi.py` bridging FastAPI (ASGI) to Passenger (WSGI) via `a2wsgi`.
+- `frontend/public/.htaccess` — HTTPS redirect, SPA rewrite, gzip, immutable asset caching, security headers.
+- `backend/.env.production.example` + `frontend/.env.production.example`.
+- `CPANEL_DEPLOYMENT.md` — end-to-end step-by-step for `innovationwindowindia.com`.
+- `a2wsgi==1.10.7` added to `requirements.txt` (verified `application` object loads).
+
 ## Test Coverage
 - Iteration 1 (Amazon prototype): 100% (retired).
 - Iteration 2 (IWI apothecary pivot): backend 23/23 pytest, frontend all flows PASS.
+- Iteration 3 (Razorpay + mobile nav + testimonials): PASS.
 
 ## Prioritized Backlog
 ### P0 — Ready for production polish
-- Explicit `CORS_ORIGINS` list (currently `*` with credentials).
-- `secure=True` cookies for HTTPS deployments.
-- Pydantic `AddressModel` at API layer.
+- Rotate `JWT_SECRET` and `ADMIN_PASSWORD` before going live on cPanel.
+- Switch Razorpay keys from TEST to LIVE after KYC.
+- Provision MongoDB Atlas and whitelist the cPanel outbound IP.
 
 ### P1 — Business growth
 - Product reviews (customer written) + review moderation in admin.
