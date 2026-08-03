@@ -31,7 +31,16 @@ export default function Orders() {
                 <div className="text-right"><div className="uppercase tracking-widest text-muted-warm text-[10px]">Order</div><div className="font-mono text-ink">{o.order_number}</div></div>
               </div>
               <div className="p-5">
-                <div className="text-xs uppercase tracking-widest text-sage mb-3">{(o.status || "confirmed")}</div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-xs uppercase tracking-widest text-sage capitalize" data-testid={`order-status-${o.id}`}>{(o.status || "confirmed").replace("_", " ")}</div>
+                  <Link
+                    to={`/order-confirmation/${o.id}`}
+                    data-testid={`track-order-${o.id}`}
+                    className="text-xs text-terracotta hover:underline"
+                  >
+                    Track order →
+                  </Link>
+                </div>
                 <ul className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {o.items.map((it, i) => (
                     <li key={i} className="flex gap-3">

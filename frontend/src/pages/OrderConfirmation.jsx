@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { CheckCircle2, Package } from "lucide-react";
+import OrderTimeline from "@/components/OrderTimeline";
 
 export default function OrderConfirmation() {
   const { id } = useParams();
@@ -50,6 +51,10 @@ export default function OrderConfirmation() {
             <div className="text-[11px] tracking-widest uppercase text-muted-warm mb-1">Total</div>
             <div className="font-heading text-2xl font-semibold text-ink">₹{order.total.toFixed(2)}</div>
           </div>
+        </div>
+
+        <div className="mt-8 border-t border-warm pt-6">
+          <OrderTimeline order={order} />
         </div>
 
         <div className="mt-8 border-t border-warm pt-6">

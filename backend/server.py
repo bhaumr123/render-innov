@@ -469,6 +469,11 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
         "status": "confirmed",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "order_number": "IWI-" + uuid.uuid4().hex[:10].upper(),
+        "status_history": [{
+            "status": "confirmed",
+            "at": datetime.now(timezone.utc).isoformat(),
+            "note": "Order placed",
+        }],
     }
     res = await db.orders.insert_one(order)
     await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": []}}, upsert=True)
@@ -494,7 +499,8 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
         oid = ObjectId(order_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid id")
-    o = await db.orders.find_one({"_id": oid, "user_id": user["id"]})
+    query = {"_id": oid} if user.get("role") == "admin" else {"_id": oid, "user_id": user["id"]}
+    o = await db.orders.find_one(query)
     if not o:
         raise HTTPException(status_code=404, detail="Order not found")
     o["id"] = str(o["_id"])
@@ -511,6 +517,56 @@ async def list_all_orders(_: dict = Depends(require_admin)):
         o.pop("_id", None)
         out.append(o)
     return {"orders": out}
+
+
+ORDER_STATUS_FLOW = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "payment_failed"]
+
+
+class OrderStatusUpdate(BaseModel):
+    status: str
+    note: str = ""
+    tracking_number: str = ""
+    carrier: str = ""
+
+
+@api_router.patch("/admin/orders/{order_id}/status")
+async def admin_update_order_status(order_id: str, payload: OrderStatusUpdate, _: dict = Depends(require_admin)):
+    if payload.status not in ORDER_STATUS_FLOW:
+        raise HTTPException(status_code=400, detail=f"status must be one of {ORDER_STATUS_FLOW}")
+    try:
+        oid = ObjectId(order_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    existing = await db.orders.find_one({"_id": oid})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    event = {
+        "status": payload.status,
+        "at": now_iso,
+        "note": payload.note or f"Marked {payload.status} by admin",
+    }
+    set_fields = {"status": payload.status}
+    if payload.tracking_number:
+        set_fields["tracking_number"] = payload.tracking_number
+    if payload.carrier:
+        set_fields["carrier"] = payload.carrier
+    if payload.status == "shipped":
+        set_fields["shipped_at"] = now_iso
+        if payload.tracking_number:
+            event["note"] = f"Shipped via {payload.carrier or 'courier'} · {payload.tracking_number}"
+    if payload.status == "delivered":
+        set_fields["delivered_at"] = now_iso
+
+    await db.orders.update_one(
+        {"_id": oid},
+        {"$set": set_fields, "$push": {"status_history": event}},
+    )
+    updated = await db.orders.find_one({"_id": oid})
+    updated["id"] = str(updated["_id"])
+    updated.pop("_id", None)
+    return updated
 
 
 # ---------- Razorpay payments ----------
@@ -578,6 +634,11 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "order_number": "IWI-" + uuid.uuid4().hex[:10].upper(),
+        "status_history": [{
+            "status": "pending",
+            "at": datetime.now(timezone.utc).isoformat(),
+            "note": "Awaiting payment",
+        }],
     }
     res = await db.orders.insert_one(order)
     our_order_id = str(res.inserted_id)
@@ -641,7 +702,12 @@ async def verify_razorpay(payload: RazorpayVerifyInput, user: dict = Depends(get
             "razorpay_payment_id": payload.razorpay_payment_id,
             "razorpay_signature": payload.razorpay_signature,
             "paid_at": datetime.now(timezone.utc).isoformat(),
-        }},
+        },
+         "$push": {"status_history": {
+            "status": "confirmed",
+            "at": datetime.now(timezone.utc).isoformat(),
+            "note": "Payment received",
+         }}},
     )
     # empty cart on successful payment
     await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": []}}, upsert=True)

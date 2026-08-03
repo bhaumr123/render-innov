@@ -353,31 +353,28 @@ export default function Admin() {
         <TabsContent value="orders" className="mt-6">
           <div className="bg-surface border border-warm rounded-lg p-5">
             <h2 className="font-heading text-lg font-semibold mb-3">All orders ({orders.length})</h2>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-warm text-left text-[11px] uppercase tracking-widest text-muted-warm">
-                  <th className="py-2">Order</th>
-                  <th>Customer</th>
-                  <th>Items</th>
-                  <th>Total</th>
-                  <th>Placed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => (
-                  <tr key={o.id} className="border-b border-warm/60">
-                    <td className="py-3 font-mono text-xs">{o.order_number}</td>
-                    <td>{o.address?.full_name}</td>
-                    <td>{o.items?.length}</td>
-                    <td>₹{o.total.toFixed(2)}</td>
-                    <td className="text-xs">{new Date(o.created_at).toLocaleString()}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-warm text-left text-[11px] uppercase tracking-widest text-muted-warm">
+                    <th className="py-2">Order</th>
+                    <th>Customer</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Tracking</th>
+                    <th>Placed</th>
                   </tr>
-                ))}
-                {orders.length === 0 && (
-                  <tr><td colSpan={5} className="py-8 text-center text-muted-warm">No orders yet.</td></tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {orders.map((o) => (
+                    <AdminOrderRow key={o.id} order={o} onUpdated={loadOrders} />
+                  ))}
+                  {orders.length === 0 && (
+                    <tr><td colSpan={6} className="py-8 text-center text-muted-warm">No orders yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </TabsContent>
 
@@ -459,5 +456,106 @@ export default function Admin() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+
+const STATUS_OPTIONS = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+
+function statusBadgeClass(status) {
+  switch (status) {
+    case "delivered": return "bg-sage/15 text-sage border-sage/30";
+    case "shipped":   return "bg-blue-100 text-blue-700 border-blue-200";
+    case "processing": return "bg-amber-100 text-amber-700 border-amber-200";
+    case "cancelled":
+    case "payment_failed": return "bg-red-100 text-red-700 border-red-200";
+    default: return "bg-parchment/60 text-ink border-warm";
+  }
+}
+
+function AdminOrderRow({ order, onUpdated }) {
+  const [status, setStatus] = useState(order.status || "confirmed");
+  const [tracking, setTracking] = useState(order.tracking_number || "");
+  const [carrier, setCarrier] = useState(order.carrier || "");
+  const [saving, setSaving] = useState(false);
+  const dirty = status !== (order.status || "confirmed")
+    || tracking !== (order.tracking_number || "")
+    || carrier !== (order.carrier || "");
+
+  const save = async () => {
+    if (!dirty) return;
+    setSaving(true);
+    try {
+      await api.patch(`/admin/orders/${order.id}/status`, {
+        status,
+        tracking_number: tracking,
+        carrier,
+      });
+      toast.success(`Order ${order.order_number} updated`);
+      onUpdated?.();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update order");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr className="border-b border-warm/60 align-top" data-testid={`admin-order-row-${order.id}`}>
+      <td className="py-3 font-mono text-xs">
+        {order.order_number}
+        <div className="text-[10px] text-muted-warm mt-1">{order.items?.length} items</div>
+      </td>
+      <td className="text-xs">
+        <div>{order.address?.full_name}</div>
+        <div className="text-muted-warm">{order.address?.city}</div>
+      </td>
+      <td className="font-medium">₹{order.total.toFixed(2)}</td>
+      <td>
+        <div className="flex flex-col gap-2 min-w-[160px]">
+          <span className={`inline-block text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border w-fit ${statusBadgeClass(order.status)}`}>
+            {(order.status || "confirmed").replace("_", " ")}
+          </span>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger data-testid={`admin-order-status-select-${order.id}`} className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </td>
+      <td>
+        <div className="flex flex-col gap-1 min-w-[180px]">
+          <Input
+            data-testid={`admin-order-tracking-${order.id}`}
+            className="h-8 text-xs"
+            value={tracking}
+            onChange={(e) => setTracking(e.target.value)}
+            placeholder="Tracking #"
+          />
+          <Input
+            data-testid={`admin-order-carrier-${order.id}`}
+            className="h-8 text-xs"
+            value={carrier}
+            onChange={(e) => setCarrier(e.target.value)}
+            placeholder="Carrier (e.g. Delhivery)"
+          />
+          <button
+            type="button"
+            onClick={save}
+            disabled={!dirty || saving}
+            data-testid={`admin-order-save-${order.id}`}
+            className="text-xs px-2 py-1 rounded bg-ink text-cream hover:bg-terracotta disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </td>
+      <td className="text-xs">{new Date(order.created_at).toLocaleString()}</td>
+    </tr>
   );
 }

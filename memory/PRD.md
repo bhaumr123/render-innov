@@ -36,6 +36,16 @@ Brand: **Innovation Window India** — Tagline: *Nourish Naturally*
 - Animated customer testimonials marquee on home.
 - Tiranga soft background + Nothing OS dot-matrix header clock.
 
+## Implemented (2026-02-XX) — Order Tracking Timeline
+- Order status flow: `pending → confirmed → processing → shipped → delivered` (+ `cancelled`, `payment_failed`).
+- Every order stores a `status_history[]` array with `{status, at, note}` events.
+- `checkout` and `create-razorpay` seed the history; `verify-razorpay` appends `confirmed` on payment success.
+- `PATCH /api/admin/orders/{id}/status` — admin sets status + optional `tracking_number` + `carrier`; auto-stamps `shipped_at` / `delivered_at`.
+- `GET /api/orders/{id}` now accessible to admins for any order (owner-only for regular users).
+- `frontend/src/components/OrderTimeline.jsx` — animated 4-step timeline with connector lines, event notes and tracking chip.
+- Order confirmation page renders the timeline; Orders history page has a "Track order →" deep link.
+- Admin › Orders tab now has per-row status Select + tracking # + carrier inputs + Save with toast feedback.
+
 ## Implemented (2026-02-XX) — cPanel deployment prep
 - `backend/passenger_wsgi.py` bridging FastAPI (ASGI) to Passenger (WSGI) via `a2wsgi`.
 - `frontend/public/.htaccess` — HTTPS redirect, SPA rewrite, gzip, immutable asset caching, security headers.
