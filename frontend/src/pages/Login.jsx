@@ -38,7 +38,12 @@ export default function Login() {
             <Input id="email" data-testid="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div>
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link to="/forgot-password" data-testid="login-forgot-link" className="text-xs text-terracotta hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <Input id="password" data-testid="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           {error && <div className="text-sm text-terracotta" data-testid="login-error">{error}</div>}

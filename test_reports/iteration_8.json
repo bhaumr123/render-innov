@@ -1,0 +1,27 @@
+{
+  "summary": "Iter8 tests the new forgot-password / reset-password flow (Gmail SMTP with 30-min TTL). All backend and frontend acceptance criteria pass. 8 new pytest tests in test_iter8_password_reset.py + 12-step Playwright e2e flow (forgot form -> sent card -> try-again -> missing-token page -> reset form -> reveal toggle -> mismatch validation -> successful reset -> auto-redirect to /login -> new password login 200 -> old password rejected 401 -> reused token rejected via UI). Full regression suite is 43/43 passing (backend_test.py 23 + test_iter4_guest_flow.py 8 + test_iter7_samesite_cookie.py 4 + test_iter8_password_reset.py 8). Admin credentials admin@shop.com/admin123 restored/intact — verified at end of frontend run. Token is stored as bcrypt $2b$ hash in password_reset_tokens (verified via direct Mongo read), never plaintext, and the [SMTP UNCONFIGURED] log line correctly emits the reset URL when SMTP env vars are unset.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_password_reset.py",
+    "/app/test_reports/pytest/iter8_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py reset_password iterates unused tokens with an in-code bcrypt compare (up to 50 per request). Fine at current scale but will get expensive if a botnet floods the endpoint — consider (a) rate-limiting /auth/forgot-password by IP + email, and (b) storing a short deterministic lookup hash (e.g. sha256) alongside the bcrypt to allow O(1) fetch, then bcrypt-verify only the candidate. Not blocking for MVP.",
+    "The reset link is logged at WARNING level (server.py L275) — that is convenient for dev but means production log aggregators will index every reset URL. Once SMTP is on in production, downgrade to DEBUG or drop the message entirely to avoid a token-leak surface in log stores.",
+    "ResetPassword.jsx sets `minLength={6}` HTML attribute on the new-password input — browsers will show a native tooltip and block submit BEFORE the JS 'at least 6 characters' check fires, which is fine but means the JS-level short-password error path is effectively unreachable through the UI. Not a bug, just dead-ish code.",
+    "forgot_password does not throttle repeated requests for the same email — a bad actor can insert many rows into password_reset_tokens for a valid email (defensive `used=True` on reset handles the vulnerability, but the collection can still be spammed). TTL index cleans them within 30 min. Consider a per-email rate limit (e.g. 5/hour) as a future hardening step.",
+    "server.py line 251 does `import aiosmtplib` mid-file. Standard style is to keep all imports at the top; move alongside the other module-level imports for readability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter8_password_reset.py (new)"
+  ],
+  "success_rate": {"backend": "100% (43/43: 23 backend_test + 8 iter4 + 4 iter7 + 8 iter8)", "frontend": "100% (all 12 password-reset UI steps + admin sanity)"},
+  "test_credentials": "Admin admin@shop.com / admin123 verified intact at end of run. Ephemeral test users: testreset*@shop.com and TEST_reset_*@shop.com (customers), created + password-reset during tests. No teardown of these users is needed.",
+  "seed_data_creation": "Several TEST_-prefixed customer users + rows in password_reset_tokens (all bcrypt-hashed, TTL will purge in 30 min).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite is now 43 in-scope tests: backend_test.py + test_iter4_guest_flow.py + test_iter7_samesite_cookie.py + test_iter8_password_reset.py. Always run together with `-n 0` (serial) because test_iter8 tails /var/log/supervisor/backend.err.log to extract the reset token per email — running under `-n 2 --dist loadscope` interleaves lines but the regex is per-email so it still works. If SMTP_USER/SMTP_APP_PASSWORD ever get set in preview /app/backend/.env, the [SMTP UNCONFIGURED] log stops emitting and iter8 tests that grep the log will fail — either unset those envs before running, or extend the tests to (a) mock aiosmtplib or (b) query the token directly from Mongo (bcrypt-verify each candidate). Preview FRONTEND_URL in /app/backend/.env is set to https://shop-engine-57.preview.emergentagent.com so reset URLs are click-throughable on the preview.",
+  "rca of the issue": "N/A — new feature, no bugs found. Design is sound: bcrypt-hashed tokens (no plaintext leak via DB dumps), TTL index for automatic expiry, single-use with defensive cross-token invalidation after reset, and consistent 200 + standard 'If an account exists' response for both existing and non-existent emails (enumeration protection). Frontend correctly gates the reset page on ?token= query param, offers reveal toggle, client-side password confirmation, and auto-redirects to /login after success. Login page's forgot-password link is properly labeled with data-testid='login-forgot-link'."
+}

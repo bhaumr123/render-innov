@@ -10,8 +10,11 @@ import uuid
 import bcrypt
 import hmac
 import hashlib
+import secrets
 import jwt
 import razorpay
+import aiosmtplib
+from email.message import EmailMessage
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Annotated
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
@@ -244,6 +247,130 @@ async def logout(response: Response):
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(user: dict = Depends(get_current_user)):
     return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"]}
+
+
+# ---------- Password reset ----------
+
+
+class ForgotPasswordInput(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordInput(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    new_password: str = Field(min_length=6, max_length=200)
+
+
+async def _send_password_reset_email(recipient_email: str, recipient_name: str, reset_url: str):
+    """Send a password reset email via Gmail SMTP (or any SMTP configured via env)."""
+    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.environ.get("SMTP_PORT", "465"))
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_password = os.environ.get("SMTP_APP_PASSWORD", "")
+    from_name = os.environ.get("SMTP_FROM_NAME", "Innovation Window India")
+    from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_user)
+
+    if not smtp_user or not smtp_password:
+        # No SMTP configured — log the link for local/dev use.
+        logging.warning(f"[SMTP UNCONFIGURED] Password reset link for {recipient_email}: {reset_url}")
+        return
+
+    msg = EmailMessage()
+    msg["Subject"] = "Reset your Innovation Window India password"
+    msg["From"] = f"{from_name} <{from_email}>"
+    msg["To"] = recipient_email
+
+    text_body = (
+        f"Hi {recipient_name or 'there'},\n\n"
+        f"We received a request to reset your Innovation Window India password.\n"
+        f"Open this link within the next 30 minutes to set a new one:\n\n"
+        f"{reset_url}\n\n"
+        f"If you didn't request this, you can safely ignore this email — your password won't change.\n\n"
+        f"— Innovation Window India\n"
+    )
+    html_body = f"""
+    <html><body style="font-family:Georgia,serif;background:#F7F3EA;padding:32px;color:#20241D;">
+      <div style="max-width:520px;margin:0 auto;background:#FFFCF3;border:1px solid #E7DFCF;border-radius:12px;padding:32px;">
+        <h1 style="font-size:22px;margin:0 0 12px;color:#20241D;">Reset your password</h1>
+        <p style="color:#4B4A45;">Hi {recipient_name or 'there'}, we received a request to reset your Innovation Window India password.</p>
+        <p style="color:#4B4A45;">Click the button below within the next <b>30 minutes</b> to set a new one:</p>
+        <p style="margin:24px 0;"><a href="{reset_url}" style="display:inline-block;background:#DC7238;color:#FFFCF3;padding:12px 24px;border-radius:24px;text-decoration:none;font-weight:600;">Reset password</a></p>
+        <p style="color:#8A8578;font-size:12px;">Or paste this URL: <br><span style="word-break:break-all;">{reset_url}</span></p>
+        <hr style="border:none;border-top:1px solid #E7DFCF;margin:24px 0;" />
+        <p style="color:#8A8578;font-size:12px;">Didn't request this? You can safely ignore this email — your password won't change.</p>
+        <p style="color:#8A8578;font-size:12px;">— Innovation Window India · Nourish Naturally</p>
+      </div>
+    </body></html>
+    """
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+
+    try:
+        await aiosmtplib.send(
+            msg,
+            hostname=host,
+            port=port,
+            username=smtp_user,
+            password=smtp_password,
+            use_tls=(port == 465),
+            start_tls=(port == 587),
+            timeout=15,
+        )
+    except Exception as e:
+        logging.error(f"Password reset email failed to {recipient_email}: {e}")
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordInput):
+    """Request a password reset link. Always returns the same message regardless of
+    whether the email exists (prevents user enumeration)."""
+    email = payload.email.lower()
+    user = await db.users.find_one({"email": email})
+    if user:
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        await db.password_reset_tokens.insert_one({
+            "user_id": str(user["_id"]),
+            "email": email,
+            "token_hash": hash_password(token),  # store hashed to avoid leaking via DB dumps
+            "expires_at": expires_at,
+            "used": False,
+            "created_at": datetime.now(timezone.utc),
+        })
+        frontend_url = os.environ.get("FRONTEND_URL", "https://www.innovationwindowindia.com").rstrip("/")
+        reset_url = f"{frontend_url}/reset-password?token={token}"
+        await _send_password_reset_email(email, user.get("name", ""), reset_url)
+    return {"ok": True, "message": "If an account exists for that email, a reset link has been sent."}
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordInput):
+    """Consume a reset token and set a new password."""
+    now = datetime.now(timezone.utc)
+    # Iterate candidate unused tokens and bcrypt-compare (token itself is not indexed)
+    cursor = db.password_reset_tokens.find({
+        "used": False,
+        "expires_at": {"$gt": now},
+    }).sort([("created_at", -1)]).limit(50)
+    matched = None
+    async for rec in cursor:
+        if verify_password(payload.token, rec["token_hash"]):
+            matched = rec
+            break
+    if not matched:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    try:
+        oid = ObjectId(matched["user_id"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid token")
+    await db.users.update_one({"_id": oid}, {"$set": {"password_hash": hash_password(payload.new_password)}})
+    await db.password_reset_tokens.update_one({"_id": matched["_id"]}, {"$set": {"used": True, "used_at": now}})
+    # Invalidate all other unused tokens for this user
+    await db.password_reset_tokens.update_many(
+        {"user_id": matched["user_id"], "used": False},
+        {"$set": {"used": True, "used_at": now}},
+    )
+    return {"ok": True, "message": "Your password has been reset. Please sign in with your new password."}
 
 
 # ---------- Products ----------
@@ -1354,6 +1481,8 @@ async def startup_event():
     await db.reviews.create_index([("product_id", 1), ("user_id", 1)], unique=True)
     await db.coupons.create_index("code", unique=True)
     await db.wishlists.create_index("user_id", unique=True)
+    # TTL: MongoDB purges expired reset tokens automatically
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     # seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@shop.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
