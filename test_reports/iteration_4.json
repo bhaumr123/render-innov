@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 4 (Guest checkout + guest cart merge + guest order lookup + better error messages) tested end-to-end. Backend: 8/8 new pytest tests pass in /app/backend/tests/test_iter4_guest_flow.py (+ 23/23 regression tests still pass in backend_test.py). Fixed 1 bug in guest_lookup: contact.email was stored with mixed-case local part (only domain was lowered by EmailStr) while /orders/guest/lookup applied .lower() to the payload email — so lookup by (order_number, email) never matched. Now _build_guest_order_doc lowercases contact.email at write time and lookup continues to lowercase at read time. Frontend: full guest flow works — signup PASSES (redirect to home, cookies set, /auth/me = 200), guest add-to-cart from PDP writes to localStorage 'iwi_guest_cart_v1' with product_id + quantity + variant_label, /cart shows 'Continue as guest' + 'Have an account? Sign in to save your order' link (data-testid=cart-signin-link) exactly as required, /guest-checkout accepts contact + shipping, billing-same-as-shipping default ON, unticking reveals guest-bill-line1 form, mock card payment lands on /order-confirmation/:id?t=<token> with Confirmed timeline + shipping address + 'Updates will be sent to <email>' text, /track redirects to confirmation on success and shows 'No matching order found' on wrong email, guest cart merge on admin login moves the LS item to server cart with correct qty and CLEARS localStorage. Razorpay: /api/config/razorpay returns enabled=true + key_id=rzp_test_TF1GThmu5mJ6Ns, POST /api/orders/guest/create-razorpay returns razorpay_order_id (order_R...) + guest_access_token + amount in paise + INR currency + key_id, and the guest-checkout page shows the Razorpay row as 'RECOMMENDED' not 'Setup required'. Admin still works: /admin loads, Orders tab shows the tracking # + carrier inputs + status Select + Save button per row. Test coverage of the checklist: 12/12 requested behaviors verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter4_guest_flow.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_iter4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py has now grown to ~1370 lines. Split into routers: auth, products, cart, orders, guest, payments/razorpay, reviews, coupons, admin, config. This has been called out for 2 iterations in a row and is now the largest maintenance risk.",
+    "guest_lookup: after this iteration's fix, contact.email is lowercased at write time in _build_guest_order_doc, and lookup lowercases at read time. Good. But existing guest orders created BEFORE this patch (any pre-patch data in production) will still fail /track lookup because their stored contact.email retains the original casing. If any pre-patch data exists, a one-shot migration to $set contact.email to $toLower is needed. Not a blocker for a fresh deploy.",
+    "ReviewIn (server.py L1025) still has duplicate fields (rating/title/comment declared twice). Pydantic silently overwrites but this is dead code — remove.",
+    "guest_create_razorpay: writes an order with status='pending' and does not clean it up if the client abandons before /verify-razorpay. Consider a background sweep of guest pending orders older than N hours, else the DB will accumulate orphan pending guest orders.",
+    "_price_guest_items iterates products one-by-one (N round trips). For a typical guest cart of 1-3 items this is fine, but a single $in query would be faster and give consistent pricing snapshots.",
+    "CartMergeInput uses CartItemIn which allows quantity <= 0 (no ge=1). If a guest LS ever contains a zero-qty item it would be inserted with 0 quantity. Add Field(gt=0) or filter it out server-side.",
+    "GuestCheckoutInput.items has no upper cap — a malicious client could POST 10k items. Consider Field(max_length=50) on items."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (guest_lookup email-casing fix in _build_guest_order_doc)",
+    "/app/backend/tests/test_iter4_guest_flow.py (new)"
+  ],
+  "success_rate": {"backend": "100% (8/8 iter4 + 23/23 regression)", "frontend": "100% (all 12 checklist items verified)"},
+  "test_credentials": "Admin: admin@shop.com / admin123 (seeded). Iter4 test users registered dynamically with TEST_ prefix.",
+  "seed_data_creation": "Iter4 created TEST_ prefixed users and TEST_Guest Product (deleted at teardown). Guest orders created during Playwright run (IWI-F2C9DF897E and a few others) remain in db.orders under guest=true — negligible.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Guest checkout, guest cart merge, guest lookup, and better error messages are all working. The bug that was found & fixed: contact.email was stored with mixed-case local part in guest orders, breaking /track lookup that lowercases the query. Fixed in _build_guest_order_doc by lowering contact.email before insert. If any guest orders were placed before this fix in a shared environment, they won't be findable via /track — a one-shot $set contact.email = $toLower migration would repair them. All requested testids exist and are used: reg-name/email/password/submit, guest-name/email/phone/ship-line1/city/state/pincode, guest-billing-same, guest-bill-line1 (visible after untick), guest-pay-mock-card, guest-pay-razorpay, guest-place-order, track-order-number/email/submit, cart-checkout-btn, cart-signin-link.",
+  "rca of the issue": "Guest order lookup bug: FastAPI/Pydantic EmailStr normalizes only the domain portion to lowercase; the local part is preserved as-is. _build_guest_order_doc was persisting payload.contact.model_dump() directly, so an input of TEST_LK_ABC@Shop.com was stored as TEST_LK_ABC@shop.com. guest_lookup then did email.lower() on the payload → test_lk_abc@shop.com and queried contact.email == 'test_lk_abc@shop.com' which does not match the stored capitalized local part. Fix: lowercase contact.email at write time in _build_guest_order_doc so stored form is always canonical lowercase. Verified with test_guest_lookup_success_and_wrong_email (now green) and by the frontend /track flow ending on /order-confirmation/{id}?t=..."
+}

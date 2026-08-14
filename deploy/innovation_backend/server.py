@@ -819,10 +819,12 @@ def _build_guest_order_doc(payload: GuestCheckoutInput, priced_items: List[dict]
     subtotal = sum(i["price"] * i["quantity"] for i in priced_items)
     discount = 0.0
     coupon_applied = None
+    contact_dict = payload.contact.model_dump()
+    contact_dict["email"] = (contact_dict.get("email") or "").lower()
     return {
         "guest": True,
         "user_id": None,
-        "contact": payload.contact.model_dump(),
+        "contact": contact_dict,
         "shipping_address": payload.shipping_address.model_dump(),
         "billing_address": (
             payload.shipping_address.model_dump()
