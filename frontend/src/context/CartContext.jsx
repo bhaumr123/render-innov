@@ -136,17 +136,40 @@ export function CartProvider({ children }) {
     setCart(data);
   };
 
-  // Wipe the guest cart once user logs in (avoid stale duplicate items).
-  useEffect(() => {
-    if (user && localStorage.getItem(GUEST_CART_KEY)) {
-      localStorage.removeItem(GUEST_CART_KEY);
+  /**
+   * Called by AuthContext right after a successful login/register.
+   * Sends any localStorage guest items to the server, then clears local storage.
+   * Silently no-ops if there is no guest cart.
+   */
+  const mergeGuestCartToServer = async () => {
+    const raw = readGuestCart();
+    if (!raw.length) return;
+    try {
+      const { data } = await api.post("/cart/merge", { items: raw });
+      setCart(data);
+    } catch {
+      // If merge fails we keep local items so nothing is lost.
+      return;
     }
+    localStorage.removeItem(GUEST_CART_KEY);
+  };
+
+  // Auto-merge the guest cart into the server cart the moment the user signs in.
+  const prevUserRef = useRef(user);
+  useEffect(() => {
+    const prev = prevUserRef.current;
+    prevUserRef.current = user;
+    // Fire only on the transition guest -> authed (prev === false && new user object)
+    if (prev === false && user && typeof user === "object") {
+      mergeGuestCartToServer();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const itemCount = cart.items.reduce((s, i) => s + i.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ cart, loading, isGuest, addToCart, updateQty, removeItem, clear, refresh, itemCount }}>
+    <CartContext.Provider value={{ cart, loading, isGuest, addToCart, updateQty, removeItem, clear, refresh, mergeGuestCartToServer, itemCount }}>
       {children}
     </CartContext.Provider>
   );

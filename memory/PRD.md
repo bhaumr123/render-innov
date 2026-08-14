@@ -36,6 +36,11 @@ Brand: **Innovation Window India** — Tagline: *Nourish Naturally*
 - Animated customer testimonials marquee on home.
 - Tiranga soft background + Nothing OS dot-matrix header clock.
 
+## Implemented (2026-02-XX) — Guest Cart Merge
+- New `POST /api/cart/merge` — accepts an array of `{product_id, quantity, variant_label}` and merges into the signed-in user's server cart (existing quantities are added to, not replaced).
+- `CartContext.mergeGuestCartToServer()` fires automatically on the guest → authed transition; localStorage guest cart is wiped only after a successful merge (retained on failure so nothing is lost).
+- Verified E2E: guest cart with 2 items → register a fresh user → server cart has both items, localStorage cleared, "Continue as guest" replaced by "Proceed to checkout".
+
 ## Implemented (2026-02-XX) — Guest Checkout + Better Errors
 - `POST /api/orders/guest/checkout` — mock_card / mock_cod path for guests.
 - `POST /api/orders/guest/create-razorpay` + `POST /api/orders/guest/verify-razorpay` — Razorpay flow for guests, HMAC verified.

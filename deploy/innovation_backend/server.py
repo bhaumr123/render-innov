@@ -439,6 +439,43 @@ async def clear_cart(user: dict = Depends(get_current_user)):
     return {"items": [], "subtotal": 0}
 
 
+class CartMergeInput(BaseModel):
+    items: List[CartItemIn]
+
+
+@api_router.post("/cart/merge")
+async def merge_cart(payload: CartMergeInput, user: dict = Depends(get_current_user)):
+    """Merge a guest's localStorage cart into the signed-in user's server cart.
+    Existing quantities are added to, not replaced."""
+    if not payload.items:
+        return await get_cart(user)
+    cart = await db.carts.find_one({"user_id": user["id"]})
+    items = (cart or {}).get("items", [])
+    for incoming in payload.items:
+        variant_label = incoming.variant_label or ""
+        # Confirm product still exists before merging
+        try:
+            prod = await db.products.find_one({"_id": ObjectId(incoming.product_id)})
+        except Exception:
+            continue
+        if not prod:
+            continue
+        found = False
+        for it in items:
+            if it["product_id"] == incoming.product_id and it.get("variant_label", "") == variant_label:
+                it["quantity"] += incoming.quantity
+                found = True
+                break
+        if not found:
+            items.append({
+                "product_id": incoming.product_id,
+                "quantity": incoming.quantity,
+                "variant_label": variant_label,
+            })
+    await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": items}}, upsert=True)
+    return await get_cart(user)
+
+
 # ---------- Orders (mock checkout) ----------
 @api_router.post("/orders/checkout")
 async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user)):
