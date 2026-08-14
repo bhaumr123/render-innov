@@ -1,0 +1,28 @@
+{
+  "summary": "Iter7 regression for COOKIE_SAMESITE env-var change in set_auth_cookies. Ran full in-scope backend suite (backend_test.py 23 + test_iter4_guest_flow.py 8 = 31 baseline) + new test_iter7_samesite_cookie.py (4 new tests): 35/35 passed. Iter7 tests verify: (a) live POST /api/auth/login on preview URL sets 'access_token' cookie with 'SameSite=none; Secure; HttpOnly' when backend .env has COOKIE_SAMESITE=none, (b) /api/auth/me still resolves 200 same-origin with those cookies, (c) unit-level fallback: with COOKIE_SAMESITE unset, set_auth_cookies emits SameSite=lax and honors COOKIE_SECURE=false (backward compatible), (d) unit-level with COOKIE_SAMESITE=none forces Secure=true even when COOKIE_SECURE=false. Frontend smoke on preview URL: /, /products, /cart, /guest-checkout, /register all HTTP 200. Signup + login e2e with a fresh email succeeded end-to-end (auth/me = 200 in both flows). Only console errors observed are the same benign guest-side /api/auth/me 401 polling flagged in iter5/iter6.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iter4_guest_flow.py",
+    "/app/backend/tests/test_iter7_samesite_cookie.py",
+    "/app/test_reports/pytest/iter7_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py set_auth_cookies now correctly forces Secure=true when SameSite=none (browsers reject SameSite=None without Secure). Good.",
+    "Note: test_iter3_reviews_razorpay_cors.py::test_login_sets_secure_httponly_cookie still asserts SameSite=lax and WILL fail with the new .env — as flagged by E1, this is expected. Consider deleting that stale assertion in the same PR since it will now permanently red for cross-origin deploys.",
+    "backend/.env has COOKIE_SAMESITE=none unquoted while other bool-ish vars are quoted (e.g. COOKIE_SECURE=\"true\"). Not a bug (python-dotenv reads both), but inconsistent — worth normalizing.",
+    "render.yaml sets COOKIE_SAMESITE=none for the backend service — correct for the cross-subdomain iwi-frontend.onrender.com / iwi-backend.onrender.com pair. Verify Render also propagates COOKIE_SECURE=true (it already does)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter7_samesite_cookie.py (new)"
+  ],
+  "success_rate": {"backend": "100% (35/35 in-scope: 23 backend_test + 8 iter4 + 4 iter7)", "frontend": "100% (5/5 smoke routes + signup + login e2e)"},
+  "test_credentials": "Admin: admin@shop.com / admin123. Signup created for e2e: testiter7_1786706813@example.com / Test1234! (customer).",
+  "seed_data_creation": "One customer user via /register during signup e2e verification. No products/orders created.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "In-scope regression suite is now 35 tests: backend_test.py (23) + test_iter4_guest_flow.py (8) + test_iter7_samesite_cookie.py (4). Always run these together. test_iter3_reviews_razorpay_cors.py remains stale — 7 tests inside it will fail (Razorpay-unconfigured / CORS lockdown / SameSite=lax now inverted). Preview URL guest-side console 401s from /api/auth/me polling are benign — same as iter5/6, do not flag. Register form: use get_by_label('Your name'/'Email'/'Password') — positional selectors are unreliable due to a hidden honeypot input. If backend/.env COOKIE_SAMESITE is ever removed/unset, test_iter7 live tests will start failing since they assert 'none' — update them accordingly.",
+  "rca of the issue": "N/A — config-driven change verified. set_auth_cookies (server.py L69-80) reads COOKIE_SAMESITE (default 'lax'); when 'none' also forces secure=True. .env has COOKIE_SAMESITE=none which is loaded via load_dotenv on server import. Verified via both live HTTP inspection and direct helper unit tests. Fix for the original prod bug (Chrome blocking cross-site SameSite=lax cookies between iwi-frontend.onrender.com and iwi-backend.onrender.com so /api/auth/me returned 401) is sound; render.yaml propagates COOKIE_SAMESITE=none so /api/auth/me will now receive the cookies cross-origin. The product-creation bug (wrong path /api/admin/products vs /api/products) is not a code fix — POST /api/products with admin auth is the correct endpoint (backend_test.py::TestProducts::test_size_variants_persist covers this path, still passing)."
+}

@@ -68,10 +68,16 @@ def create_refresh_token(user_id: str) -> str:
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     secure = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
+    # SameSite: "lax" for same-site (default), "none" for cross-site (e.g. when
+    # the frontend and backend live on separate subdomains under a Public Suffix
+    # like *.onrender.com). "none" requires Secure=true.
+    samesite = os.environ.get("COOKIE_SAMESITE", "lax").lower()
+    if samesite == "none":
+        secure = True
     response.set_cookie("access_token", access_token, httponly=True, secure=secure,
-                        samesite="lax", max_age=60 * 60 * 24, path="/")
+                        samesite=samesite, max_age=60 * 60 * 24, path="/")
     response.set_cookie("refresh_token", refresh_token, httponly=True, secure=secure,
-                        samesite="lax", max_age=60 * 60 * 24 * 7, path="/")
+                        samesite=samesite, max_age=60 * 60 * 24 * 7, path="/")
 
 
 # ---------- Razorpay ----------

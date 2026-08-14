@@ -49,6 +49,11 @@ services:
         value: "799"
       - key: COOKIE_SECURE
         value: "true"
+      - key: COOKIE_SAMESITE
+        # Cross-origin frontend (Render subdomain) needs SameSite=none. Switch to
+        # "lax" once the frontend & backend share the same site (e.g. after DNS
+        # points innovationwindowindia.com at both services).
+        value: none
 
   # ---------------- Frontend (static) ----------------
   - type: web
