@@ -54,7 +54,6 @@ services:
   - type: web
     name: iwi-frontend
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: yarn install --frozen-lockfile && yarn build
     staticPublishPath: build
