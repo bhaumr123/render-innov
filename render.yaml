@@ -55,11 +55,13 @@ services:
     name: iwi-frontend
     runtime: static
     rootDir: frontend
-    buildCommand: yarn install --frozen-lockfile && yarn build
+    buildCommand: yarn install && yarn build
     staticPublishPath: build
     autoDeploy: true
     pullRequestPreviewsEnabled: false
     envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
       - key: REACT_APP_BACKEND_URL
         fromService:
           type: web
