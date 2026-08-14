@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 6 regression testing for Render build-config change (date-fns 4→^3.6.0 downgrade + corepack/yarn on Render). Ran backend regression suite (backend_test.py + test_iter4_guest_flow.py) — all 31/31 passed. Frontend smoke on preview URL: /, /products, /cart, /guest-checkout, /register all returned HTTP 200 with the app rendered. Signup on /register with a fresh email worked end-to-end: redirected to /, httpOnly access_token + refresh_token cookies set (SameSite=None, Secure), and /api/auth/me returned 200 with the new customer profile. Only console errors observed were guest-side 401s from /api/auth/me polling — same as iter5, not new. Per E1 instruction, the 7 stale tests in test_iter3_reviews_razorpay_cors.py were not re-run and are not flagged.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iter4_guest_flow.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "date-fns is not imported anywhere under /app/frontend/src (grep confirms). The downgrade is purely to satisfy react-day-picker@8.10.1's peer range (date-fns 2.x||3.x). react-day-picker itself is only used inside components/ui/calendar.jsx (unused shadcn scaffold). Consider removing both dependencies entirely in a follow-up cleanup PR to eliminate the peer-conflict surface area on future npm-based builds.",
+    "render.yaml frontend build now depends on corepack activating yarn@1.22.22. This is fine but couples deploy to Node 20+ (corepack shipped in Node 16.9+, but the auto-download requires internet at build time on Render). NODE_VERSION=20.11.1 in render.yaml covers this — good.",
+    "yarn.lock is now git-tracked (good); ensure package-lock.json is either absent or gitignored to avoid npm/yarn drift on future Render builds."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (31/31 in-scope tests)", "frontend": "100% (5/5 smoke routes + signup e2e)"},
+  "test_credentials": "Admin: admin@shop.com / admin123 (not exercised this iter). Created signup: testiter6_73031@example.com / Test1234! (customer, id 6a7ef35bba1c463d4f12f124).",
+  "seed_data_creation": "One customer user created via /register during signup e2e verification (testiter6_73031@example.com). No products/orders created.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter6 verified build-config change only. Backend suite (backend_test.py 23 + test_iter4_guest_flow.py 8 = 31 tests) is the green regression baseline — always run these. test_iter3_reviews_razorpay_cors.py has 7 stale tests (Razorpay-unconfigured / CORS lockdown / SameSite=lax) — skip or expect-fail these until reviews/Razorpay/CORS-lockdown are re-scoped. Preview URL guest-side console shows benign 401s from /api/auth/me — don't flag. Register form: form has 4 inputs where inputs[0] is a hidden text (likely browser autofill/name honeypot); use get_by_label('Your name'/'Email'/'Password') for reliable filling instead of positional selectors.",
+  "rca of the issue": "N/A — no issues found. Build-config change verified: date-fns ^3.6.0 satisfies react-day-picker@8.10.1 peer range, resolving the ERESOLVE. Corepack+yarn on Render honors package.json resolutions (ajv/ajv-keywords pin), resolving the transitive collision. Runtime unaffected because date-fns is not imported in src/."
+}

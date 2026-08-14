@@ -55,7 +55,10 @@ services:
     name: iwi-frontend
     runtime: static
     rootDir: frontend
-    buildCommand: yarn install && yarn build
+    # The app relies on yarn's `resolutions` field to pin transitive deps that
+    # npm's flat resolver mishandles (ajv/ajv-keywords collision from react-scripts).
+    # Enable corepack (bundled with Node 20) so `yarn` is available, then build.
+    buildCommand: "corepack enable && corepack prepare yarn@1.22.22 --activate && yarn install --network-timeout 300000 && yarn build"
     staticPublishPath: build
     autoDeploy: true
     pullRequestPreviewsEnabled: false
