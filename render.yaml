@@ -42,7 +42,7 @@ services:
       - key: FRONTEND_URL
         value: https://innovationwindowindia.com
       - key: CORS_ORIGINS
-        value: https://innovationwindowindia.com,https://www.innovationwindowindia.com
+        value: https://iwi-frontend.onrender.com,https://innovationwindowindia.com,https://www.innovationwindowindia.com
       - key: FLAT_SHIPPING_FEE
         value: "49"
       - key: FREE_SHIPPING_THRESHOLD
@@ -66,10 +66,9 @@ services:
       - key: NODE_VERSION
         value: 20.11.1
       - key: REACT_APP_BACKEND_URL
-        fromService:
-          type: web
-          name: iwi-backend
-          property: host             # yields https://iwi-backend.onrender.com
+        # Full URL required (fromService.property: host omits the scheme,
+        # producing a broken relative URL at build time).
+        value: https://iwi-backend.onrender.com
       - key: GENERATE_SOURCEMAP
         value: "false"
       - key: DISABLE_ESLINT_PLUGIN
