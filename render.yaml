@@ -1,0 +1,86 @@
+# -------------------------------------------------------------------
+# Render blueprint for Innovation Window India
+# Two services:
+#   • iwi-backend  — FastAPI web service (Python)
+#   • iwi-frontend — Built React SPA served as a static site
+# -------------------------------------------------------------------
+services:
+  # ---------------- Backend ----------------
+  - type: web
+    name: iwi-backend
+    runtime: python
+    plan: free
+    region: singapore                # closest to India on Render free tier
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
+      # ---- Secrets — set the actual values in the Render dashboard ----
+      - key: MONGO_URL                 # Atlas SRV URI
+        sync: false
+      - key: DB_NAME
+        value: innovation_window_india
+      - key: JWT_SECRET                # generate with: python -c "import secrets;print(secrets.token_hex(32))"
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@innovationwindowindia.com
+      - key: ADMIN_PASSWORD            # rotate after first login
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+
+      # ---- App config ----
+      - key: FRONTEND_URL
+        value: https://innovationwindowindia.com
+      - key: CORS_ORIGINS
+        value: https://innovationwindowindia.com,https://www.innovationwindowindia.com
+      - key: FLAT_SHIPPING_FEE
+        value: "49"
+      - key: FREE_SHIPPING_THRESHOLD
+        value: "799"
+      - key: COOKIE_SECURE
+        value: "true"
+
+  # ---------------- Frontend (static) ----------------
+  - type: web
+    name: iwi-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: yarn install --frozen-lockfile && yarn build
+    staticPublishPath: build
+    autoDeploy: true
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        fromService:
+          type: web
+          name: iwi-backend
+          property: host             # yields https://iwi-backend.onrender.com
+      - key: GENERATE_SOURCEMAP
+        value: "false"
+      - key: DISABLE_ESLINT_PLUGIN
+        value: "true"
+    routes:
+      - type: rewrite                  # React Router SPA fallback
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /static/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
