@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import api, { formatApiErrorDetail } from "@/lib/api";
+import api, { formatApiError } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -27,7 +27,7 @@ export function AuthProvider({ children }) {
       setUser(data);
       return true;
     } catch (e) {
-      setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+      setError(formatApiError(e));
       return false;
     }
   };
@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
       setUser(data);
       return true;
     } catch (e) {
-      setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+      setError(formatApiError(e));
       return false;
     }
   };

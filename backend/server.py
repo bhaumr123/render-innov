@@ -717,6 +717,273 @@ async def verify_razorpay(payload: RazorpayVerifyInput, user: dict = Depends(get
     return o
 
 
+# ---------- Guest checkout ----------
+import secrets as _secrets
+
+
+class GuestContact(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: EmailStr
+    phone: str = Field(min_length=6, max_length=20)
+
+
+class GuestAddress(BaseModel):
+    line1: str = Field(min_length=1, max_length=200)
+    line2: str = ""
+    city: str = Field(min_length=1, max_length=120)
+    state: str = Field(min_length=1, max_length=120)
+    pincode: str = Field(min_length=3, max_length=20)
+    country: str = "India"
+
+
+class GuestCartItem(BaseModel):
+    product_id: str
+    quantity: int = Field(gt=0, le=99)
+    variant_label: str = ""
+
+
+class GuestCheckoutInput(BaseModel):
+    contact: GuestContact
+    shipping_address: GuestAddress
+    billing_same_as_shipping: bool = True
+    billing_address: Optional[GuestAddress] = None
+    items: List[GuestCartItem]
+    payment_method: str = "mock_card"  # "mock_card" | "mock_cod" | "razorpay"
+    coupon_code: str = ""
+
+
+async def _price_guest_items(items: List[GuestCartItem]) -> List[dict]:
+    """Load product + variant price for each guest cart item."""
+    priced = []
+    for it in items:
+        try:
+            prod = await db.products.find_one({"_id": ObjectId(it.product_id)})
+        except Exception:
+            prod = None
+        if not prod:
+            raise HTTPException(status_code=400, detail=f"Product not found: {it.product_id}")
+        unit_price = float(prod.get("price", 0))
+        for v in prod.get("size_variants", []) or []:
+            if v.get("label") == it.variant_label:
+                unit_price = float(v.get("price", unit_price))
+                break
+        priced.append({
+            "product_id": it.product_id,
+            "title": prod.get("title", ""),
+            "price": unit_price,
+            "quantity": it.quantity,
+            "variant_label": it.variant_label or "",
+            "image_url": prod.get("image_url", ""),
+        })
+    return priced
+
+
+def _build_guest_order_doc(payload: GuestCheckoutInput, priced_items: List[dict]) -> dict:
+    subtotal = sum(i["price"] * i["quantity"] for i in priced_items)
+    discount = 0.0
+    coupon_applied = None
+    return {
+        "guest": True,
+        "user_id": None,
+        "contact": payload.contact.model_dump(),
+        "shipping_address": payload.shipping_address.model_dump(),
+        "billing_address": (
+            payload.shipping_address.model_dump()
+            if payload.billing_same_as_shipping or not payload.billing_address
+            else payload.billing_address.model_dump()
+        ),
+        "billing_same_as_shipping": payload.billing_same_as_shipping,
+        "items": priced_items,
+        "subtotal": round(subtotal, 2),
+        "discount": discount,
+        "coupon_code": coupon_applied,
+        "order_number": "IWI-" + uuid.uuid4().hex[:10].upper(),
+        "guest_access_token": _secrets.token_urlsafe(24),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@api_router.post("/orders/guest/checkout")
+async def guest_checkout(payload: GuestCheckoutInput):
+    """Guest checkout for mock_card / mock_cod (no real payment)."""
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+    if payload.payment_method not in ("mock_card", "mock_cod"):
+        raise HTTPException(status_code=400, detail="Use /orders/guest/create-razorpay for Razorpay payments")
+
+    priced = await _price_guest_items(payload.items)
+    order = _build_guest_order_doc(payload, priced)
+
+    subtotal = order["subtotal"]
+    discount = 0.0
+    if payload.coupon_code:
+        val = await _validate_coupon(payload.coupon_code, subtotal)
+        if not val.get("valid"):
+            raise HTTPException(status_code=400, detail=val.get("reason", "Invalid coupon"))
+        discount = float(val["discount"])
+        order["coupon_code"] = val["code"]
+    order["discount"] = discount
+    discounted = max(0.0, round(subtotal - discount, 2))
+    order["tax"] = round(discounted * 0.05, 2)
+    order["shipping"] = _shipping_for(discounted)
+    order["total"] = round(discounted + order["tax"] + order["shipping"], 2)
+    order["payment_method"] = payload.payment_method
+    order["status"] = "confirmed"
+    order["status_history"] = [{
+        "status": "confirmed",
+        "at": datetime.now(timezone.utc).isoformat(),
+        "note": "Guest order placed",
+    }]
+
+    res = await db.orders.insert_one(order)
+    if order["coupon_code"]:
+        await db.coupons.update_one({"code": order["coupon_code"]}, {"$inc": {"uses": 1}})
+    order["id"] = str(res.inserted_id)
+    order.pop("_id", None)
+    return order
+
+
+@api_router.post("/orders/guest/create-razorpay")
+async def guest_create_razorpay(payload: GuestCheckoutInput):
+    client_rzp = get_razorpay_client()
+    if client_rzp is None:
+        raise HTTPException(status_code=503, detail="Razorpay is not configured on this server.")
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+
+    priced = await _price_guest_items(payload.items)
+    order = _build_guest_order_doc(payload, priced)
+
+    subtotal = order["subtotal"]
+    discount = 0.0
+    if payload.coupon_code:
+        val = await _validate_coupon(payload.coupon_code, subtotal)
+        if not val.get("valid"):
+            raise HTTPException(status_code=400, detail=val.get("reason", "Invalid coupon"))
+        discount = float(val["discount"])
+        order["coupon_code"] = val["code"]
+    order["discount"] = discount
+    discounted = max(0.0, round(subtotal - discount, 2))
+    order["tax"] = round(discounted * 0.05, 2)
+    order["shipping"] = _shipping_for(discounted)
+    order["total"] = round(discounted + order["tax"] + order["shipping"], 2)
+    order["payment_method"] = "razorpay"
+    order["status"] = "pending"
+    order["status_history"] = [{
+        "status": "pending",
+        "at": datetime.now(timezone.utc).isoformat(),
+        "note": "Awaiting guest payment",
+    }]
+
+    res = await db.orders.insert_one(order)
+    our_order_id = str(res.inserted_id)
+    amount_paise = int(round(order["total"] * 100))
+    try:
+        rzp_order = client_rzp.order.create({
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": order["order_number"][:40],
+            "payment_capture": 1,
+            "notes": {"internal_order_id": our_order_id, "guest_email": payload.contact.email},
+        })
+    except Exception as e:
+        await db.orders.delete_one({"_id": res.inserted_id})
+        raise HTTPException(status_code=502, detail=f"Razorpay order creation failed: {str(e)}")
+
+    await db.orders.update_one({"_id": res.inserted_id},
+                               {"$set": {"razorpay_order_id": rzp_order["id"]}})
+    if order["coupon_code"]:
+        await db.coupons.update_one({"code": order["coupon_code"]}, {"$inc": {"uses": 1}})
+
+    return {
+        "order_id": our_order_id,
+        "order_number": order["order_number"],
+        "guest_access_token": order["guest_access_token"],
+        "amount": amount_paise,
+        "currency": "INR",
+        "razorpay_order_id": rzp_order["id"],
+        "key_id": os.environ.get("RAZORPAY_KEY_ID", ""),
+    }
+
+
+class GuestVerifyInput(BaseModel):
+    order_id: str
+    guest_access_token: str
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+@api_router.post("/orders/guest/verify-razorpay")
+async def guest_verify_razorpay(payload: GuestVerifyInput):
+    key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
+    if not key_secret:
+        raise HTTPException(status_code=503, detail="Razorpay is not configured")
+    try:
+        oid = ObjectId(payload.order_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid order id")
+    o = await db.orders.find_one({"_id": oid, "guest_access_token": payload.guest_access_token})
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    body = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}".encode("utf-8")
+    expected = hmac.new(key_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, payload.razorpay_signature):
+        await db.orders.update_one({"_id": oid}, {"$set": {"status": "payment_failed"}})
+        raise HTTPException(status_code=400, detail="Invalid payment signature")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one(
+        {"_id": oid},
+        {"$set": {
+            "status": "confirmed",
+            "razorpay_payment_id": payload.razorpay_payment_id,
+            "razorpay_signature": payload.razorpay_signature,
+            "paid_at": now,
+        },
+         "$push": {"status_history": {"status": "confirmed", "at": now, "note": "Payment received"}}},
+    )
+    o = await db.orders.find_one({"_id": oid})
+    o["id"] = str(o["_id"])
+    o.pop("_id", None)
+    return o
+
+
+@api_router.get("/orders/guest/{order_id}")
+async def guest_get_order(order_id: str, t: str = Query(..., min_length=8, max_length=200)):
+    """Return a guest order using its access token. No auth required."""
+    try:
+        oid = ObjectId(order_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    o = await db.orders.find_one({"_id": oid, "guest_access_token": t})
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    o["id"] = str(o["_id"])
+    o.pop("_id", None)
+    return o
+
+
+class GuestLookupInput(BaseModel):
+    order_number: str
+    email: EmailStr
+
+
+@api_router.post("/orders/guest/lookup")
+async def guest_lookup(payload: GuestLookupInput):
+    """Guest tracks an order by (order_number, email). Returns access token + order."""
+    o = await db.orders.find_one({
+        "order_number": payload.order_number.strip().upper(),
+        "contact.email": payload.email.lower(),
+    })
+    if not o:
+        raise HTTPException(status_code=404, detail="No matching order found")
+    o["id"] = str(o["_id"])
+    o.pop("_id", None)
+    return o
+
+
 # ---------- Reviews (verified purchasers only) ----------
 class ReviewIn(BaseModel):
     rating: int = Field(ge=1, le=5)

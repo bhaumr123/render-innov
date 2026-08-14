@@ -5,7 +5,7 @@ import { Trash2, Plus, Minus } from "lucide-react";
 import api from "@/lib/api";
 
 export default function Cart() {
-  const { cart, updateQty, removeItem } = useCart();
+  const { cart, updateQty, removeItem, isGuest } = useCart();
   const navigate = useNavigate();
   const [shippingCfg, setShippingCfg] = useState({ flat_fee: 6.99, free_threshold: 75 });
 
@@ -126,13 +126,18 @@ export default function Cart() {
           </div>
         </div>
         <button
-          onClick={() => navigate("/checkout")}
+          onClick={() => navigate(isGuest ? "/guest-checkout" : "/checkout")}
           disabled={cart.items.length === 0}
           data-testid="cart-checkout-btn"
           className="w-full mt-5 bg-ink text-cream text-sm font-medium rounded-full py-3 hover:bg-terracotta transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Proceed to checkout
+          {isGuest ? "Continue as guest" : "Proceed to checkout"}
         </button>
+        {isGuest && cart.items.length > 0 && (
+          <div className="text-[11px] text-muted-warm text-center mt-3">
+            Have an account? <Link to="/login" className="text-terracotta hover:underline" data-testid="cart-signin-link">Sign in to save your order.</Link>
+          </div>
+        )}
       </aside>
     </div>
   );

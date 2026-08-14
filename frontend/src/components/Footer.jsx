@@ -37,7 +37,7 @@ export default function Footer() {
         <div>
           <div className="font-heading text-sm uppercase tracking-widest mb-3 text-cream/60">Help</div>
           <ul className="space-y-2 text-sm">
-            <li><Link to="/orders" className="hover:text-terracotta transition-colors">Track order</Link></li>
+            <li><Link to="/track" className="hover:text-terracotta transition-colors" data-testid="footer-track-order">Track order</Link></li>
             <li>Shipping & returns</li>
             <li>Contact</li>
             <li>FAQ</li>

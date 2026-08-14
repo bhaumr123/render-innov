@@ -36,6 +36,16 @@ Brand: **Innovation Window India** — Tagline: *Nourish Naturally*
 - Animated customer testimonials marquee on home.
 - Tiranga soft background + Nothing OS dot-matrix header clock.
 
+## Implemented (2026-02-XX) — Guest Checkout + Better Errors
+- `POST /api/orders/guest/checkout` — mock_card / mock_cod path for guests.
+- `POST /api/orders/guest/create-razorpay` + `POST /api/orders/guest/verify-razorpay` — Razorpay flow for guests, HMAC verified.
+- `GET /api/orders/guest/{id}?t=<token>` — order fetch by access token (no auth).
+- `POST /api/orders/guest/lookup` — order tracking by `(order_number, email)`; returns the order + access token.
+- Guest orders have `guest: True`, `contact: {name, email, phone}`, `shipping_address`, `billing_address`, `guest_access_token`.
+- Frontend: new `GuestCheckout.jsx` (contact + shipping + billing-same-as-shipping toggle + Razorpay/mock/COD), new `TrackOrder.jsx` (order # + email → tracking timeline), refactored `CartContext` so **guests** can add to cart (localStorage-backed) with automatic hydration on refresh.
+- Better API error messaging via new `formatApiError` helper (distinguishes "cannot reach server" from a JSON API error) — fixes the confusing "Something went wrong" on the live cPanel site when the backend is not running.
+- ProductCard + ProductDetail no longer force sign-in before add-to-cart; buy-now sends guests straight to `/guest-checkout`.
+
 ## Implemented (2026-02-XX) — Order Tracking Timeline
 - Order status flow: `pending → confirmed → processing → shipped → delivered` (+ `cancelled`, `payment_failed`).
 - Every order stores a `status_history[]` array with `{status, at, note}` events.

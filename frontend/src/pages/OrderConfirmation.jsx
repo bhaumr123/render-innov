@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import { CheckCircle2, Package } from "lucide-react";
 import OrderTimeline from "@/components/OrderTimeline";
@@ -7,11 +7,18 @@ import OrderTimeline from "@/components/OrderTimeline";
 export default function OrderConfirmation() {
   const { id } = useParams();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const guestToken = searchParams.get("t");
   const [order, setOrder] = useState(location.state?.order || null);
 
   useEffect(() => {
-    if (!order) api.get(`/orders/${id}`).then((r) => setOrder(r.data)).catch(() => setOrder(false));
-  }, [id, order]);
+    if (order) return;
+    // Guest orders come with ?t=<access_token>. Otherwise assume authenticated.
+    const fetcher = guestToken
+      ? api.get(`/orders/guest/${id}`, { params: { t: guestToken } })
+      : api.get(`/orders/${id}`);
+    fetcher.then((r) => setOrder(r.data)).catch(() => setOrder(false));
+  }, [id, order, guestToken]);
 
   if (order === null) return <div className="p-8">Loading…</div>;
   if (order === false) return <div className="p-8">Order not found.</div>;
@@ -35,17 +42,39 @@ export default function OrderConfirmation() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 border-t border-warm pt-6">
           <div>
             <div className="text-[11px] tracking-widest uppercase text-muted-warm mb-1">Shipping to</div>
-            <div className="text-sm text-ink leading-relaxed">
-              {order.address?.full_name}<br />
-              {order.address?.street}<br />
-              {order.address?.city}, {order.address?.state} {order.address?.zip}<br />
-              {order.address?.country}
+            <div className="text-sm text-ink leading-relaxed" data-testid="order-ship-address">
+              {order.guest ? (
+                <>
+                  {order.contact?.name}<br />
+                  {order.shipping_address?.line1}
+                  {order.shipping_address?.line2 && <>, {order.shipping_address.line2}</>}<br />
+                  {order.shipping_address?.city}, {order.shipping_address?.state} {order.shipping_address?.pincode}<br />
+                  {order.shipping_address?.country}
+                </>
+              ) : (
+                <>
+                  {order.address?.full_name}<br />
+                  {order.address?.street}<br />
+                  {order.address?.city}, {order.address?.state} {order.address?.zip}<br />
+                  {order.address?.country}
+                </>
+              )}
             </div>
+            {order.guest && (
+              <div className="text-[11px] text-muted-warm mt-2" data-testid="order-guest-contact">
+                Updates will be sent to <span className="text-ink">{order.contact?.email}</span>
+              </div>
+            )}
           </div>
           <div>
             <div className="text-[11px] tracking-widest uppercase text-muted-warm mb-1">Payment</div>
-            <div className="text-sm text-ink">{order.payment_method === "mock_cod" ? "Cash on delivery" : "Card (mock)"}</div>
-            <div className="text-[11px] text-muted-warm mt-1">No real charges were made.</div>
+            <div className="text-sm text-ink">{
+              order.payment_method === "mock_cod" ? "Cash on delivery" :
+              order.payment_method === "razorpay" ? "Razorpay" : "Card (mock)"
+            }</div>
+            {order.payment_method !== "razorpay" && (
+              <div className="text-[11px] text-muted-warm mt-1">No real charges were made.</div>
+            )}
           </div>
           <div>
             <div className="text-[11px] tracking-widest uppercase text-muted-warm mb-1">Total</div>

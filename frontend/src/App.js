@@ -13,7 +13,9 @@ import ProductList from "@/pages/ProductList";
 import ProductDetail from "@/pages/ProductDetail";
 import Cart from "@/pages/Cart";
 import Checkout from "@/pages/Checkout";
+import GuestCheckout from "@/pages/GuestCheckout";
 import OrderConfirmation from "@/pages/OrderConfirmation";
+import TrackOrder from "@/pages/TrackOrder";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Orders from "@/pages/Orders";
@@ -42,7 +44,9 @@ function App() {
                   <Route path="/about" element={<About />} />
                   <Route path="/wishlist" element={<Wishlist />} />
                   <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
-                  <Route path="/order-confirmation/:id" element={<ProtectedRoute><OrderConfirmation /></ProtectedRoute>} />
+                  <Route path="/guest-checkout" element={<GuestCheckout />} />
+                  <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
+                  <Route path="/track" element={<TrackOrder />} />
                   <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
                   <Route path="/admin" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
                   <Route path="*" element={<NotFound />} />

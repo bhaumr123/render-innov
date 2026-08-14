@@ -42,7 +42,6 @@ export default function ProductDetail() {
   const hasVariants = (p.size_variants || []).length > 0;
 
   const handleAdd = async () => {
-    if (!user) return navigate("/login");
     if (hasVariants && !selectedVariant) {
       toast.error("Please select a size");
       return;
@@ -52,10 +51,9 @@ export default function ProductDetail() {
   };
 
   const handleBuy = async () => {
-    if (!user) return navigate("/login");
     if (hasVariants && !selectedVariant) return toast.error("Please select a size");
     await addToCart(p.id, qty, selectedVariant || "");
-    navigate("/checkout");
+    navigate(user ? "/checkout" : "/guest-checkout");
   };
 
   return (

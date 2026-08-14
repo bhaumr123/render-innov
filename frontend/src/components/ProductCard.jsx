@@ -2,12 +2,10 @@ import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useCart } from "@/context/CartContext";
-import { useAuth } from "@/context/AuthContext";
 import WishlistButton from "@/components/WishlistButton";
 
 export default function ProductCard({ product }) {
   const { addToCart } = useCart();
-  const { user } = useAuth();
   const navigate = useNavigate();
 
   const hasVariants = product.size_variants && product.size_variants.length > 0;
@@ -18,11 +16,6 @@ export default function ProductCard({ product }) {
   const handleAdd = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!user) {
-      toast.error("Please sign in to add items");
-      navigate("/login");
-      return;
-    }
     if (hasVariants) {
       // Go to detail so a size is chosen
       navigate(`/product/${product.id}`);

@@ -1,175 +1,155 @@
-# Innovation Window India — cPanel deployment package
+# cPanel Deployment Guide — Innovation Window India
 
-This folder is a ready-to-upload cPanel bundle. It contains the production build of the site and everything cPanel needs to run the backend.
+This guide deploys the app to a standard shared cPanel host with:
 
-```
-deploy/
-├── public_html/            <- upload the CONTENTS of this to your cPanel public_html/
-│   ├── .htaccess           (Apache rewrites for React Router + HTTPS + gzip)
-│   ├── index.html
-│   ├── asset-manifest.json
-│   └── static/             (hashed JS/CSS/media)
-├── innovation_backend/     <- upload this whole folder OUTSIDE public_html/ (e.g. ~/innovation_backend/)
-│   ├── passenger_wsgi.py   (WSGI/ASGI bridge — cPanel entry point)
-│   ├── server.py           (FastAPI app)
-│   ├── requirements.txt    (Python deps)
-│   └── .env.example        (rename to .env after filling values)
-└── README.md               (this file)
-```
+- **Domain:** `innovationwindowindia.com`
+- **Frontend:** React SPA served from `public_html/` (Apache)
+- **Backend:** FastAPI served by cPanel's *Setup Python App* (Phusion Passenger, WSGI via `a2wsgi`)
+- **Database:** MongoDB Atlas (free tier is fine to start)
 
-The frontend has been built with `REACT_APP_BACKEND_URL=https://innovationwindowindia.com` — so as long as your backend is served at `https://innovationwindowindia.com/api/...`, no rebuild is needed.
+> cPanel shared hosting does not run local MongoDB. Use MongoDB Atlas or an equivalent managed Mongo — do **not** try to run `mongod` on cPanel.
 
 ---
 
-## Prerequisites
+## 1. Prerequisites
 
-Do these once before uploading:
-
-1. **Point the domain to cPanel** — add an `A` record for `innovationwindowindia.com` (and `www.innovationwindowindia.com`) at your registrar to the cPanel server IP.
-2. **Install an SSL certificate** — cPanel → *SSL/TLS Status* → *Run AutoSSL*. Wait until the padlock icon is green.
-3. **Provision MongoDB Atlas** — cPanel shared hosting does not run Mongo locally.
-   - Sign up at [cloud.mongodb.com](https://cloud.mongodb.com)
-   - Create a free **M0** cluster in the region closest to your cPanel server
-   - **Database Access** → create a DB user + password
-   - **Network Access** → add your cPanel outbound IP (or `0.0.0.0/0` to start)
-   - **Connect → Drivers → Python** → copy the `mongodb+srv://...` connection string
-4. **Razorpay keys** — either keep the TEST keys during staging or generate LIVE keys once KYC is approved.
+1. cPanel account with:
+   - **Setup Python App** available (most Namecheap / Hostinger / A2 Hosting plans have this)
+   - **SSH access** (recommended, not mandatory)
+2. Free [MongoDB Atlas](https://cloud.mongodb.com) cluster — copy the `mongodb+srv://…` connection string.
+3. Razorpay account with LIVE keys (or keep the TEST keys during staging).
+4. Domain `innovationwindowindia.com` pointing to the cPanel server (A record from your registrar).
 
 ---
 
-## Step 1 — Upload the frontend
+## 2. Build the React frontend locally
 
-1. Open cPanel → **File Manager** → navigate into `public_html/`.
-2. Delete any placeholder files that came with the account (`index.html`, `cgi-bin/` may be left as-is if you don't use CGI).
-3. Upload the **contents** of the local `deploy/public_html/` folder (not the folder itself). Dotfiles like `.htaccess` must land in `public_html/.htaccess`. Enable **Settings → Show Hidden Files** in File Manager if needed.
-4. Right-click `.htaccess` → **Permissions** → confirm it is `644`.
+On your own laptop (not on cPanel):
 
-Sanity check by visiting `https://innovationwindowindia.com/` — you should see the site (API calls will fail until Step 2 finishes).
-
----
-
-## Step 2 — Upload the backend
-
-1. In cPanel → **File Manager**, click **Home** (⌂). Create a new folder: `innovation_backend`. This must be **outside** `public_html/`.
-2. Upload the **contents** of the local `deploy/innovation_backend/` folder into that directory.
-3. Rename `.env.example` → `.env` and edit it. See Step 3 for values.
-
-Your file tree should look like:
-
-```
-/home/YOUR_USER/
-├── innovation_backend/
-│   ├── .env
-│   ├── passenger_wsgi.py
-│   ├── requirements.txt
-│   └── server.py
-└── public_html/
-    ├── .htaccess
-    ├── index.html
-    └── static/...
+```bash
+cd frontend
+cp .env.production.example .env      # then edit REACT_APP_BACKEND_URL
+yarn install
+yarn build
 ```
 
----
-
-## Step 3 — Fill in `innovation_backend/.env`
-
-Open `.env` and set every value. Reference:
-
-```dotenv
-MONGO_URL="mongodb+srv://USER:PASS@CLUSTER.mongodb.net/?retryWrites=true&w=majority"
-DB_NAME="innovation_window_india"
-
-CORS_ORIGINS="https://innovationwindowindia.com,https://www.innovationwindowindia.com"
-FRONTEND_URL="https://innovationwindowindia.com"
-
-JWT_SECRET="<paste the output of `python -c 'import secrets; print(secrets.token_hex(32))'`>"
-
-ADMIN_EMAIL="admin@innovationwindowindia.com"
-ADMIN_PASSWORD="<a strong password, change after first login>"
-
-FLAT_SHIPPING_FEE="49"
-FREE_SHIPPING_THRESHOLD="799"
-
-RAZORPAY_KEY_ID="rzp_live_XXXXXXXXXXXXXXXX"
-RAZORPAY_KEY_SECRET="XXXXXXXXXXXXXXXXXXXXXXXX"
-RAZORPAY_WEBHOOK_SECRET="XXXXXXXXXXXXXXXXXXXXXXXX"
-
-COOKIE_SECURE="true"
-```
-
-> Never commit `.env` to git. Keep it inside cPanel only.
+This produces `frontend/build/`. Everything inside that folder is what you will upload.
 
 ---
 
-## Step 4 — Create the Python App
+## 3. Upload the frontend to `public_html`
+
+1. Open cPanel → **File Manager** → `public_html/`.
+2. Delete any placeholder `index.html` / `cgi-bin` that came with the account.
+3. Upload the **contents** of `frontend/build/` (not the folder itself) into `public_html/`.
+4. Make sure `.htaccess` (already included in this repo at `frontend/public/.htaccess`) lands in `public_html/.htaccess`. It:
+   - Forces HTTPS
+   - Rewrites SPA routes to `index.html`
+   - Enables gzip + long-term caching for hashed assets
+
+---
+
+## 4. Upload the backend
+
+1. In cPanel → **File Manager**, create a folder outside `public_html`, e.g. `~/innovation_backend/`.
+2. Upload the entire `/app/backend/` directory contents into `~/innovation_backend/`. At minimum you need:
+   - `server.py`
+   - `passenger_wsgi.py`
+   - `requirements.txt`
+   - `.env` (created from `.env.production.example`)
+3. Edit `~/innovation_backend/.env`:
+   - Paste the Atlas `MONGO_URL`
+   - Generate a fresh `JWT_SECRET` (`python -c "import secrets; print(secrets.token_hex(32))"`)
+   - Set `CORS_ORIGINS="https://innovationwindowindia.com,https://www.innovationwindowindia.com"`
+   - Paste your Razorpay LIVE keys and `RAZORPAY_WEBHOOK_SECRET`
+
+---
+
+## 5. Create the Python App in cPanel
 
 cPanel → **Setup Python App** → **Create Application**:
 
-| Field                     | Value                                            |
-|---------------------------|--------------------------------------------------|
-| Python version            | 3.11 (or highest 3.10+ available)                |
-| Application root          | `innovation_backend`                             |
-| Application URL           | `innovationwindowindia.com/api`                  |
-| Application startup file  | `passenger_wsgi.py`                              |
-| Application Entry point   | `application`                                    |
+| Field | Value |
+|---|---|
+| Python version | 3.11 (or the highest 3.11+ available) |
+| Application root | `innovation_backend` |
+| Application URL | `innovationwindowindia.com/api` |
+| Application startup file | `passenger_wsgi.py` |
+| Application Entry point | `application` |
 
-Click **Create**. cPanel prints a `source .../activate && cd ...` command. Open **cPanel → Terminal**, paste that command, then run:
+Click **Create**. cPanel will print a command like:
+
+```
+source /home/<user>/virtualenv/innovation_backend/3.11/bin/activate && cd /home/<user>/innovation_backend
+```
+
+Run that in **Terminal** (cPanel → Terminal), then:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Go back to *Setup Python App* → click **Restart**.
+Finally back on the *Setup Python App* page click **Restart**.
 
 ---
 
-## Step 5 — Configure the Razorpay webhook
+## 6. Wire the API subpath in Apache
 
-Razorpay Dashboard → **Settings → Webhooks → + Add New Webhook**:
+cPanel's Python App already exposes the FastAPI at `https://innovationwindowindia.com/api/…` because we mounted it at `/api`. If you chose a different **Application URL**, update:
 
-- **URL:** `https://innovationwindowindia.com/api/webhooks/razorpay`
-- **Secret:** the exact value of `RAZORPAY_WEBHOOK_SECRET` in your `.env`
-- **Active events:** `payment.captured`, `payment.failed`
+- `frontend/.env.production` → `REACT_APP_BACKEND_URL=https://innovationwindowindia.com` (no trailing slash — the frontend always prefixes `/api`)
+- Rebuild + reupload the SPA.
+
+If you prefer a separate subdomain (e.g. `api.innovationwindowindia.com`):
+
+1. Create a subdomain pointing to `innovation_backend` in cPanel.
+2. Set **Application URL** to `api.innovationwindowindia.com/`.
+3. Change `REACT_APP_BACKEND_URL=https://api.innovationwindowindia.com` and rebuild.
 
 ---
 
-## Step 6 — Smoke test
+## 7. Razorpay webhook
 
-Run each of these — you should see JSON responses, not HTML error pages.
+Razorpay Dashboard → **Webhooks** → Add:
+
+- URL: `https://innovationwindowindia.com/api/webhooks/razorpay`
+- Secret: same value as `RAZORPAY_WEBHOOK_SECRET` in `.env`
+- Events: `payment.captured`, `payment.failed`
+
+---
+
+## 8. Smoke test
 
 ```bash
-curl -s https://innovationwindowindia.com/api/
-# → {"message":"Innovation Window India API","version":"1.0"}
+# Health
+curl -s https://innovationwindowindia.com/api/health
 
-curl -s https://innovationwindowindia.com/api/products | head -c 300
-# → {"items":[...]}
+# Frontend loads and routes work
+curl -sI https://innovationwindowindia.com/            # 200
+curl -sI https://innovationwindowindia.com/products    # 200 (served by index.html)
 ```
 
-Then open `https://innovationwindowindia.com/` in a browser:
-
-1. Products should load from the API.
-2. Register a new user, add an item to cart, checkout with the Razorpay test card `4111 1111 1111 1111` (OTP `1234`).
-3. Log in as admin with the email + password from `.env`. Rotate the admin password immediately.
+Login with the admin credentials from `.env`, place a Razorpay test order, then rotate the admin password.
 
 ---
 
-## Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| `500 Internal Server Error` on `/api/...` | cPanel → *Setup Python App* → **Log Files**. Usually a missing env var or the venv missed `pip install`. Re-run `pip install -r requirements.txt` and **Restart**. |
-| React routes return 404 on refresh | `.htaccess` missing or has wrong permissions. Re-upload it (enable "Show hidden" in File Manager) and set to `644`. |
-| CORS error in browser console | `CORS_ORIGINS` in `.env` must include the exact scheme + host, no trailing slash. Restart the Python App after edits. |
-| Mongo `ServerSelectionTimeoutError` | Whitelist the cPanel outbound IP in Atlas → *Network Access*, or allow `0.0.0.0/0` for testing. |
-| Razorpay webhook returns `signature mismatch` | `RAZORPAY_WEBHOOK_SECRET` in `.env` must exactly match the Razorpay dashboard value. |
-| Site loads but API 502s | Passenger app crashed. Check *Setup Python App → Log Files*. Common cause: `pip install` never ran inside the venv, or a package failed to compile. |
+| `500 Internal Server Error` on `/api/...` | cPanel → *Setup Python App* → **Log Files**. Usually a missing env var or the venv did not pick up `requirements.txt`. Re-run `pip install -r requirements.txt` and **Restart**. |
+| React routes return 404 on refresh | `.htaccess` missing from `public_html/`. Re-upload it (dotfiles are hidden — enable "Show hidden" in File Manager). |
+| CORS blocked in browser | `CORS_ORIGINS` in backend `.env` must include the exact protocol + host (`https://innovationwindowindia.com`). Restart the Python App after editing. |
+| Mongo connection timeouts | Whitelist the cPanel server's outbound IP in Atlas → Network Access, or allow `0.0.0.0/0` for testing. |
+| Razorpay webhook shows `signature mismatch` | The `RAZORPAY_WEBHOOK_SECRET` in `.env` must exactly match the value entered in the Razorpay dashboard. |
 
 ---
 
-## Redeploying
+## 10. Files added by this deployment prep
 
-**Frontend-only change** (React code, styling): rebuild locally with `REACT_APP_BACKEND_URL=https://innovationwindowindia.com yarn build`, then re-upload the contents of `build/` to `public_html/`.
-
-**Backend-only change** (`server.py`): upload the new file, then click **Restart** in *Setup Python App*.
-
-**Dependency change** (`requirements.txt`): upload the new file, open cPanel → Terminal → activate the venv → `pip install -r requirements.txt` → **Restart** the app.
+- `backend/passenger_wsgi.py` — WSGI/ASGI bridge for Passenger
+- `backend/.env.production.example` — template for the production `.env`
+- `backend/requirements.txt` — now includes `a2wsgi`
+- `frontend/public/.htaccess` — Apache rewrite + caching rules
+- `frontend/.env.production.example` — template for build-time env
+- `CPANEL_DEPLOYMENT.md` — this file
