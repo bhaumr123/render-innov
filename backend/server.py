@@ -1191,7 +1191,12 @@ def _send_whatsapp_sync(to_whatsapp: str, body: str) -> None:
         auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
         timeout=15,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        # Twilio's error body (code + message, e.g. 63007 "channel could not
+        # be found" for an un-joined sandbox recipient) is far more useful
+        # for debugging than the generic "400 Client Error" requests raises —
+        # surface it in the log instead of losing it.
+        raise RuntimeError(f"Twilio {resp.status_code} sending to {to_whatsapp}: {resp.text}")
 
 
 async def _send_order_confirmation_whatsapp(phone: str, name: str, order: dict):
