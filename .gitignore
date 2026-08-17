@@ -89,3 +89,6 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# Local preview-only launcher (never for production use)
+backend/run_dev_preview.py
