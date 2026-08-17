@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Trash2, ImagePlus, QrCode, Clock, CheckCircle2, XCircle, Plus, X } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Trash2, ImagePlus, QrCode, Clock, CheckCircle2, XCircle, Plus, X, Package } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const emptyForm = { title: "", image_url: "", image_url_2: "", qr_code_url: "" };
@@ -175,7 +176,13 @@ export default function SellerDashboard() {
         <p className="text-sm text-muted-warm mt-1">Signed in as {user?.email}</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-6">
+      <Tabs defaultValue="products">
+        <TabsList>
+          <TabsTrigger value="products" data-testid="seller-tab-products">Products</TabsTrigger>
+          <TabsTrigger value="orders" data-testid="seller-tab-orders">Orders</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="products" className="mt-6 grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-6">
         <form onSubmit={submit} className="bg-surface border border-warm rounded-lg p-5 space-y-4 h-fit" data-testid="seller-product-form">
           <h2 className="font-heading text-lg font-semibold">List a new product</h2>
           <p className="text-xs text-muted-warm -mt-2">
@@ -398,6 +405,133 @@ export default function SellerDashboard() {
             )}
           </div>
         </div>
+        </TabsContent>
+
+        <TabsContent value="orders" className="mt-6">
+          <SellerOrders />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+const SELLER_ORDER_STATUS_OPTIONS = ["confirmed", "processing", "shipped", "delivered", "cancelled"];
+
+function fulfillmentBadgeClass(status) {
+  switch (status) {
+    case "delivered": return "bg-sage/15 text-sage border-sage/30";
+    case "shipped": return "bg-blue-100 text-blue-700 border-blue-200";
+    case "processing": return "bg-amber-100 text-amber-700 border-amber-200";
+    case "cancelled": return "bg-red-100 text-red-700 border-red-200";
+    default: return "bg-parchment/60 text-ink border-warm";
+  }
+}
+
+function SellerOrders() {
+  const [orders, setOrders] = useState(null);
+
+  const loadOrders = () => api.get("/seller/orders").then((r) => setOrders(r.data.orders || []));
+  useEffect(() => { loadOrders(); }, []);
+
+  if (orders === null) return <div className="text-muted-warm">Loading orders…</div>;
+
+  return (
+    <div className="bg-surface border border-warm rounded-lg p-5">
+      <h2 className="font-heading text-lg font-semibold mb-3">Orders containing your products ({orders.length})</h2>
+      {orders.length === 0 ? (
+        <div className="py-8 text-center text-muted-warm flex flex-col items-center gap-2">
+          <Package size={20} />
+          No orders yet.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {orders.map((o) => (
+            <SellerOrderRow key={o.id} order={o} onUpdated={loadOrders} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SellerOrderRow({ order, onUpdated }) {
+  const fulfillment = order.seller_fulfillment || {};
+  const [status, setStatus] = useState(fulfillment.status || "confirmed");
+  const [tracking, setTracking] = useState(fulfillment.tracking_number || "");
+  const [carrier, setCarrier] = useState(fulfillment.carrier || "");
+  const [saving, setSaving] = useState(false);
+  const dirty = status !== (fulfillment.status || "confirmed")
+    || tracking !== (fulfillment.tracking_number || "")
+    || carrier !== (fulfillment.carrier || "");
+
+  const save = async () => {
+    if (!dirty) return;
+    setSaving(true);
+    try {
+      await api.patch(`/seller/orders/${order.id}/status`, { status, tracking_number: tracking, carrier });
+      toast.success(`Order ${order.order_number} updated`);
+      onUpdated?.();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update order");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const buyerName = order.guest ? order.contact?.name : order.address?.full_name;
+
+  return (
+    <div className="border border-warm rounded-lg p-4" data-testid={`seller-order-${order.id}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-xs text-ink">{order.order_number}</div>
+          <div className="text-xs text-muted-warm mt-0.5">{buyerName} · {new Date(order.created_at).toLocaleDateString()}</div>
+        </div>
+        <span className={`inline-block text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border ${fulfillmentBadgeClass(fulfillment.status)}`}>
+          {(fulfillment.status || "confirmed").replace("_", " ")}
+        </span>
+      </div>
+      <ul className="mt-3 space-y-1">
+        {order.items.map((it, i) => (
+          <li key={i} className="text-sm text-ink flex justify-between">
+            <span>{it.title}{it.variant_label && ` · ${it.variant_label}`} × {it.quantity}</span>
+            <span className="text-muted-warm">₹{(it.price * it.quantity).toFixed(2)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="text-xs text-muted-warm mt-2">Your items total: ₹{order.seller_subtotal.toFixed(2)}</div>
+
+      <div className="grid grid-cols-1 md:grid-cols-[160px_1fr_1fr_auto] gap-2 mt-3 items-start">
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger data-testid={`seller-order-status-${order.id}`} className="h-9 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {SELLER_ORDER_STATUS_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s} className="capitalize">{s.replace("_", " ")}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          data-testid={`seller-order-tracking-${order.id}`}
+          className="h-9 text-xs"
+          placeholder="Tracking #"
+          value={tracking}
+          onChange={(e) => setTracking(e.target.value)}
+        />
+        <Input
+          data-testid={`seller-order-carrier-${order.id}`}
+          className="h-9 text-xs"
+          placeholder="Carrier"
+          value={carrier}
+          onChange={(e) => setCarrier(e.target.value)}
+        />
+        <button
+          onClick={save}
+          disabled={!dirty || saving}
+          data-testid={`seller-order-save-${order.id}`}
+          className="text-xs px-4 py-2 rounded bg-ink text-cream hover:bg-terracotta disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
       </div>
     </div>
   );

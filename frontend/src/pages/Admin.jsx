@@ -28,6 +28,7 @@ export default function Admin() {
   const [orders, setOrders] = useState([]);
   const [coupons, setCoupons] = useState([]);
   const [stats, setStats] = useState(null);
+  const [sellerStats, setSellerStats] = useState([]);
   const [complaints, setComplaints] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
@@ -37,9 +38,10 @@ export default function Admin() {
   const loadOrders = () => api.get("/admin/orders").then((r) => setOrders(r.data.orders || []));
   const loadCoupons = () => api.get("/admin/coupons").then((r) => setCoupons(r.data.coupons || []));
   const loadStats = () => api.get("/admin/stats").then((r) => setStats(r.data));
+  const loadSellerStats = () => api.get("/admin/stats/sellers").then((r) => setSellerStats(r.data.items || []));
   const loadComplaints = () => api.get("/admin/complaints").then((r) => setComplaints(r.data.items || []));
 
-  useEffect(() => { loadProducts(); loadOrders(); loadCoupons(); loadStats(); loadComplaints(); }, []);
+  useEffect(() => { loadProducts(); loadOrders(); loadCoupons(); loadStats(); loadSellerStats(); loadComplaints(); }, []);
 
   const submitCoupon = async (e) => {
     e.preventDefault();
@@ -249,6 +251,7 @@ export default function Admin() {
           <TabsTrigger value="overview" data-testid="admin-tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="products" data-testid="admin-tab-products">Products</TabsTrigger>
           <TabsTrigger value="orders" data-testid="admin-tab-orders">Orders</TabsTrigger>
+          <TabsTrigger value="sellers" data-testid="admin-tab-sellers">Sellers</TabsTrigger>
           <TabsTrigger value="coupons" data-testid="admin-tab-coupons">Coupons</TabsTrigger>
           <TabsTrigger value="complaints" data-testid="admin-tab-complaints">
             Complaints{stats?.open_complaints > 0 && ` (${stats.open_complaints})`}
@@ -414,6 +417,50 @@ export default function Admin() {
                   ))}
                   {orders.length === 0 && (
                     <tr><td colSpan={6} className="py-8 text-center text-muted-warm">No orders yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="sellers" className="mt-6">
+          <div className="bg-surface border border-warm rounded-lg p-5">
+            <h2 className="font-heading text-lg font-semibold mb-3">Seller-wise gist ({sellerStats.length})</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[700px]">
+                <thead>
+                  <tr className="border-b border-warm text-left text-[11px] uppercase tracking-widest text-muted-warm">
+                    <th className="py-2">Seller</th>
+                    <th>Orders</th>
+                    <th>Items sold</th>
+                    <th>Revenue</th>
+                    <th>Pending fulfillments</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sellerStats.map((s) => (
+                    <tr key={s.seller_id} className="border-b border-warm/60" data-testid={`admin-seller-row-${s.seller_id}`}>
+                      <td className="py-3">
+                        <div className="font-medium">{s.name || "—"}</div>
+                        <div className="text-xs text-muted-warm">{s.email}</div>
+                      </td>
+                      <td>{s.orders}</td>
+                      <td>{s.items_sold}</td>
+                      <td>₹{s.revenue.toFixed(2)}</td>
+                      <td>
+                        {s.pending_fulfillments > 0 ? (
+                          <span className="inline-block text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+                            {s.pending_fulfillments} pending
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-warm">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {sellerStats.length === 0 && (
+                    <tr><td colSpan={5} className="py-8 text-center text-muted-warm">No sellers yet.</td></tr>
                   )}
                 </tbody>
               </table>

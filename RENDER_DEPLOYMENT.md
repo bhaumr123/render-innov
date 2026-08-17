@@ -17,7 +17,8 @@ Render `host` reference — no manual URL editing required.
 1. **MongoDB Atlas** — you already provisioned this. Grab the `mongodb+srv://…` connection string with the DB user's password.
 2. **Razorpay keys** — Test keys are fine to start; swap to LIVE once KYC is approved.
 3. **Cloudinary account** — free tier is enough. Sign up at [cloudinary.com](https://cloudinary.com), then on your Dashboard copy the **API Environment variable** (it looks like `cloudinary://<key>:<secret>@<cloud_name>`). This is what stores seller product pictures and QR codes durably — without it, uploads fall back to local disk and are wiped on every Render redeploy.
-4. **GitHub repo** — push this codebase using the Emergent *Save to GitHub* button in the chat input.
+4. **Twilio account (optional)** — only needed for WhatsApp payment-confirmation messages. Sign up at [twilio.com](https://twilio.com), open the [WhatsApp Sandbox](https://console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn) to get a test number instantly (no business verification needed to start), then grab your **Account SID** and **Auth Token** from the console home page. Email confirmations work regardless — they reuse the SMTP settings you already configured for password resets.
+5. **GitHub repo** — push this codebase using the Emergent *Save to GitHub* button in the chat input.
 
 ---
 
@@ -43,6 +44,9 @@ For `iwi-backend`, Render will prompt for the env vars marked `sync: false`:
 | `RAZORPAY_KEY_SECRET` | Same page |
 | `RAZORPAY_WEBHOOK_SECRET` | From Razorpay Dashboard → Webhooks (create after deploy) |
 | `CLOUDINARY_URL` | The value you copied in Prerequisites step 3. Recommended — without it, seller uploads still work but don't survive a redeploy. |
+| `TWILIO_ACCOUNT_SID` | From your Twilio console home page. **Optional** — without it, order-confirmation WhatsApp messages are skipped (logged instead) and email confirmations still go out via SMTP. |
+| `TWILIO_AUTH_TOKEN` | Same page. |
+| `TWILIO_WHATSAPP_FROM` | Your Twilio WhatsApp-enabled number in the form `whatsapp:+14155238886` (that's the shared sandbox number while testing — join it by sending the join code Twilio gives you from your own WhatsApp first). |
 
 `JWT_SECRET` auto-generates on first deploy — no action needed.
 
@@ -107,3 +111,5 @@ Push to GitHub → Render auto-deploys both services. That's it.
 | Razorpay webhook mismatch | `RAZORPAY_WEBHOOK_SECRET` in Render must match the value in Razorpay Dashboard exactly. |
 | Seller product picture / QR code disappears after a redeploy | `CLOUDINARY_URL` isn't set, so uploads fell back to local disk, which Render's free plan doesn't persist. Set `CLOUDINARY_URL` and re-upload. |
 | Seller upload returns "Image upload failed" | Check **iwi-backend → Logs** for the Cloudinary error — usually an invalid or expired `CLOUDINARY_URL`. Re-copy it from the Cloudinary Dashboard. |
+| No WhatsApp confirmation after checkout | Check **iwi-backend → Logs** for `[WHATSAPP UNCONFIGURED]` (Twilio env vars unset — expected until you set them) or a Twilio error. If using the sandbox number, the buyer's phone must have joined it first by messaging the join code from their own WhatsApp. |
+| No confirmation email after checkout | Check **iwi-backend → Logs** for `[SMTP UNCONFIGURED]` — same SMTP env vars used for password-reset emails power this too. |

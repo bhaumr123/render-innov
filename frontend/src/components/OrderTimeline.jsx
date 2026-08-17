@@ -26,36 +26,37 @@ function fmt(iso) {
   }
 }
 
-export default function OrderTimeline({ order }) {
-  if (!order) return null;
-  const history = Array.isArray(order.status_history) ? order.status_history : [];
-  const current = order.status || "confirmed";
+export default function OrderTimeline({ status, history, trackingNumber, carrier, testIdSuffix = "", label = "Order status" }) {
+  if (!status) return null;
+  const historyList = Array.isArray(history) ? history : [];
+  const current = status || "confirmed";
   const currentIdx = stepIndex(current);
   const failed = current === "payment_failed" || current === "cancelled";
+  const tid = (base) => (testIdSuffix ? `${base}-${testIdSuffix}` : base);
 
   // Map each canonical step to its first matching history event so we can
   // show a real timestamp beside completed stages.
-  const historyByStatus = history.reduce((acc, ev) => {
+  const historyByStatus = historyList.reduce((acc, ev) => {
     if (!acc[ev.status]) acc[ev.status] = ev;
     return acc;
   }, {});
 
   return (
-    <div data-testid="order-timeline" className="border border-warm rounded-lg bg-surface p-5">
+    <div data-testid={tid("order-timeline")} className="border border-warm rounded-lg bg-surface p-5">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <div className="text-[11px] tracking-[0.3em] uppercase text-sage">Order status</div>
-          <div className="font-heading text-xl font-semibold text-ink capitalize" data-testid="order-current-status">
+          <div className="text-[11px] tracking-[0.3em] uppercase text-sage">{label}</div>
+          <div className="font-heading text-xl font-semibold text-ink capitalize" data-testid={tid("order-current-status")}>
             {current.replace("_", " ")}
           </div>
         </div>
-        {order.tracking_number && (
+        {trackingNumber && (
           <div className="text-right">
             <div className="text-[11px] tracking-widest uppercase text-muted-warm">Tracking</div>
-            <div className="font-mono text-sm text-ink" data-testid="order-tracking-number">
-              {order.tracking_number}
+            <div className="font-mono text-sm text-ink" data-testid={tid("order-tracking-number")}>
+              {trackingNumber}
             </div>
-            {order.carrier && <div className="text-xs text-muted-warm">via {order.carrier}</div>}
+            {carrier && <div className="text-xs text-muted-warm">via {carrier}</div>}
           </div>
         )}
       </div>
@@ -66,7 +67,7 @@ export default function OrderTimeline({ order }) {
           <div className="text-sm">
             <div className="font-medium text-terracotta capitalize">{current.replace("_", " ")}</div>
             <div className="text-muted-warm mt-0.5">
-              {history[history.length - 1]?.note || "This order did not complete."}
+              {historyList[historyList.length - 1]?.note || "This order did not complete."}
             </div>
           </div>
         </div>
@@ -91,7 +92,7 @@ export default function OrderTimeline({ order }) {
                       ? "bg-sage/15 border-sage text-sage"
                       : "bg-parchment/40 border-warm text-muted-warm"
                   } ${active ? "ring-2 ring-sage/30" : ""}`}
-                  data-testid={`timeline-step-${step.key}`}
+                  data-testid={tid(`timeline-step-${step.key}`)}
                   data-active={active ? "true" : "false"}
                   data-done={done ? "true" : "false"}
                 >

@@ -1,8 +1,55 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import api, { resolveUploadUrl } from "@/lib/api";
-import { CheckCircle2, Package } from "lucide-react";
+import { CheckCircle2, Package, Store } from "lucide-react";
 import OrderTimeline from "@/components/OrderTimeline";
+
+const PLATFORM_KEY = "__platform__";
+
+function SellerGroup({ sellerKey, items, sellerInfo, fulfillment, overallOrder }) {
+  const subtotal = items.reduce((sum, it) => sum + it.price * it.quantity, 0);
+  const isPlatform = sellerKey === PLATFORM_KEY;
+  const status = isPlatform ? overallOrder.status : fulfillment?.status;
+  const history = isPlatform ? overallOrder.status_history : fulfillment?.history;
+  const trackingNumber = isPlatform ? overallOrder.tracking_number : fulfillment?.tracking_number;
+  const carrier = isPlatform ? overallOrder.carrier : fulfillment?.carrier;
+
+  return (
+    <div className="border border-warm rounded-lg overflow-hidden" data-testid={`order-seller-group-${sellerKey}`}>
+      <div className="bg-cream/60 border-b border-warm px-5 py-3 flex items-center gap-2">
+        <Store size={14} className="text-sage" />
+        <span className="text-sm font-medium text-ink">
+          {isPlatform ? "Sold by Innovation Window India" : `Sold by ${sellerInfo?.name || "seller"}`}
+        </span>
+        <span className="text-xs text-muted-warm ml-auto">₹{subtotal.toFixed(2)}</span>
+      </div>
+      <ul className="divide-y divide-warm px-5">
+        {items.map((it, i) => (
+          <li key={i} className="py-3 flex items-center gap-3">
+            <img src={resolveUploadUrl(it.image_url)} className="w-14 h-14 object-contain" alt="" />
+            <div className="flex-1 text-sm">
+              <div className="font-medium">{it.title}</div>
+              <div className="text-xs text-muted-warm">
+                Qty {it.quantity}{it.variant_label && ` · ${it.variant_label}`}
+              </div>
+            </div>
+            <div className="font-semibold">₹{(it.price * it.quantity).toFixed(2)}</div>
+          </li>
+        ))}
+      </ul>
+      <div className="p-5 pt-2">
+        <OrderTimeline
+          status={status}
+          history={history}
+          trackingNumber={trackingNumber}
+          carrier={carrier}
+          testIdSuffix={sellerKey}
+          label={isPlatform ? "Order status" : "Seller status"}
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function OrderConfirmation() {
   const { id } = useParams();
@@ -19,6 +66,21 @@ export default function OrderConfirmation() {
       : api.get(`/orders/${id}`);
     fetcher.then((r) => setOrder(r.data)).catch(() => setOrder(false));
   }, [id, order, guestToken]);
+
+  // Group items by seller so a multi-vendor order can be tracked seller-by-seller.
+  // Items with no seller_id (admin/platform-sold) fall under a "platform" group.
+  const groups = useMemo(() => {
+    if (!order || !order.items) return [];
+    const map = new Map();
+    for (const it of order.items) {
+      const key = it.seller_id || PLATFORM_KEY;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(it);
+    }
+    return Array.from(map.entries());
+  }, [order]);
+
+  const hasSellerGroups = groups.length > 0 && !(groups.length === 1 && groups[0][0] === PLATFORM_KEY);
 
   if (order === null) return <div className="p-8">Loading…</div>;
   if (order === false) return <div className="p-8">Order not found.</div>;
@@ -70,6 +132,7 @@ export default function OrderConfirmation() {
             <div className="text-[11px] tracking-widest uppercase text-muted-warm mb-1">Payment</div>
             <div className="text-sm text-ink">{
               order.payment_method === "mock_cod" ? "Cash on delivery" :
+              order.payment_method === "seller_qr" ? "Seller UPI QR" :
               order.payment_method === "razorpay" ? "Razorpay" : "Card (mock)"
             }</div>
             {order.payment_method !== "razorpay" && (
@@ -82,29 +145,49 @@ export default function OrderConfirmation() {
           </div>
         </div>
 
-        <div className="mt-8 border-t border-warm pt-6">
-          <OrderTimeline order={order} />
-        </div>
-
-        <div className="mt-8 border-t border-warm pt-6">
-          <div className="text-[11px] tracking-widest uppercase text-muted-warm mb-3 flex items-center gap-1">
-            <Package size={12} /> Items on their way
-          </div>
-          <ul className="divide-y divide-warm">
-            {order.items.map((it, i) => (
-              <li key={i} className="py-3 flex items-center gap-3">
-                <img src={resolveUploadUrl(it.image_url)} className="w-14 h-14 object-contain" alt="" />
-                <div className="flex-1 text-sm">
-                  <div className="font-medium">{it.title}</div>
-                  <div className="text-xs text-muted-warm">
-                    Qty {it.quantity}{it.variant_label && ` · ${it.variant_label}`}
-                  </div>
-                </div>
-                <div className="font-semibold">₹{(it.price * it.quantity).toFixed(2)}</div>
-              </li>
+        {hasSellerGroups ? (
+          <div className="mt-8 border-t border-warm pt-6 space-y-5">
+            <div className="text-[11px] tracking-widest uppercase text-muted-warm flex items-center gap-1">
+              <Package size={12} /> Tracked per seller
+            </div>
+            {groups.map(([sellerKey, items]) => (
+              <SellerGroup
+                key={sellerKey}
+                sellerKey={sellerKey}
+                items={items}
+                sellerInfo={order.sellers?.[sellerKey]}
+                fulfillment={order.seller_status?.[sellerKey]}
+                overallOrder={order}
+              />
             ))}
-          </ul>
-        </div>
+          </div>
+        ) : (
+          <>
+            <div className="mt-8 border-t border-warm pt-6">
+              <OrderTimeline status={order.status} history={order.status_history} trackingNumber={order.tracking_number} carrier={order.carrier} />
+            </div>
+
+            <div className="mt-8 border-t border-warm pt-6">
+              <div className="text-[11px] tracking-widest uppercase text-muted-warm mb-3 flex items-center gap-1">
+                <Package size={12} /> Items on their way
+              </div>
+              <ul className="divide-y divide-warm">
+                {order.items.map((it, i) => (
+                  <li key={i} className="py-3 flex items-center gap-3">
+                    <img src={resolveUploadUrl(it.image_url)} className="w-14 h-14 object-contain" alt="" />
+                    <div className="flex-1 text-sm">
+                      <div className="font-medium">{it.title}</div>
+                      <div className="text-xs text-muted-warm">
+                        Qty {it.quantity}{it.variant_label && ` · ${it.variant_label}`}
+                      </div>
+                    </div>
+                    <div className="font-semibold">₹{(it.price * it.quantity).toFixed(2)}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
 
         <div className="mt-6 border-t border-warm pt-6 text-sm space-y-1">
           <div className="flex justify-between text-muted-warm"><span>Subtotal</span><span>₹{order.subtotal.toFixed(2)}</span></div>

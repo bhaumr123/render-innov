@@ -7,12 +7,14 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import logging
 import uuid
+import asyncio
 import bcrypt
 import hmac
 import hashlib
 import secrets
 import jwt
 import razorpay
+import requests
 import aiosmtplib
 import cloudinary
 import cloudinary.uploader
@@ -786,6 +788,185 @@ async def merge_cart(payload: CartMergeInput, user: dict = Depends(get_current_u
     return await get_cart(user)
 
 
+# ---------- Order confirmation notifications (email + WhatsApp) ----------
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "")  # e.g. "whatsapp:+14155238886"
+
+
+def _normalize_whatsapp_number(raw_phone: str) -> Optional[str]:
+    """Best-effort E.164-ish normalization. Assumes India (+91) when no
+    country code is given, since that's this app's primary market."""
+    digits = "".join(ch for ch in (raw_phone or "") if ch.isdigit() or ch == "+")
+    if not digits:
+        return None
+    if not digits.startswith("+"):
+        digits = "+91" + digits.lstrip("0")
+    return f"whatsapp:{digits}"
+
+
+def _send_whatsapp_sync(to_whatsapp: str, body: str) -> None:
+    resp = requests.post(
+        f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json",
+        data={"From": TWILIO_WHATSAPP_FROM, "To": to_whatsapp, "Body": body},
+        auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+        timeout=15,
+    )
+    resp.raise_for_status()
+
+
+async def _send_order_confirmation_whatsapp(phone: str, name: str, order: dict):
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM):
+        logging.warning(f"[WHATSAPP UNCONFIGURED] Order confirmation for {phone}: order {order.get('order_number')}")
+        return
+    to_whatsapp = _normalize_whatsapp_number(phone)
+    if not to_whatsapp:
+        return
+    frontend_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    body = (
+        f"Hi {name or 'there'}! Your Innovation Window India order {order.get('order_number')} "
+        f"payment is confirmed. Total: Rs.{float(order.get('total', 0)):.2f}."
+        + (f" Track it: {frontend_url}/orders" if frontend_url else "")
+        + "\n\nThank you for shopping with us!"
+    )
+    try:
+        await run_in_threadpool(_send_whatsapp_sync, to_whatsapp, body)
+    except Exception as e:
+        logging.error(f"WhatsApp order confirmation failed to {phone}: {e}")
+
+
+async def _send_order_confirmation_email(recipient_email: str, recipient_name: str, order: dict):
+    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.environ.get("SMTP_PORT", "465"))
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_password = os.environ.get("SMTP_APP_PASSWORD", "")
+    from_name = os.environ.get("SMTP_FROM_NAME", "Innovation Window India")
+    from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_user)
+
+    if not smtp_user or not smtp_password:
+        logging.warning(f"[SMTP UNCONFIGURED] Order confirmation for {recipient_email}: order {order.get('order_number')}")
+        return
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Payment confirmed · Order {order.get('order_number')}"
+    msg["From"] = f"{from_name} <{from_email}>"
+    msg["To"] = recipient_email
+
+    def _line(it):
+        variant = f" ({it['variant_label']})" if it.get("variant_label") else ""
+        return f"  - {it.get('title')} x{it.get('quantity')}{variant} — ₹{float(it.get('price', 0)) * int(it.get('quantity', 0)):.2f}"
+
+    items_text = "\n".join(_line(it) for it in order.get("items", []))
+    text_body = (
+        f"Hi {recipient_name or 'there'},\n\n"
+        f"Thanks for your order! Payment for order {order.get('order_number')} is confirmed.\n\n"
+        f"Items:\n{items_text}\n\n"
+        f"Total: ₹{float(order.get('total', 0)):.2f}\n\n"
+        f"— Innovation Window India\n"
+    )
+    def _item_row_html(it):
+        variant = f" ({it['variant_label']})" if it.get("variant_label") else ""
+        line_total = float(it.get("price", 0)) * int(it.get("quantity", 0))
+        return (
+            f"<tr><td style='padding:6px 0;color:#4B4A45;'>{it.get('title')} × {it.get('quantity')}{variant}</td>"
+            f"<td style='padding:6px 0;text-align:right;color:#20241D;'>₹{line_total:.2f}</td></tr>"
+        )
+
+    items_html = "".join(_item_row_html(it) for it in order.get("items", []))
+    html_body = f"""
+    <html><body style="font-family:Georgia,serif;background:#F7F3EA;padding:32px;color:#20241D;">
+      <div style="max-width:520px;margin:0 auto;background:#FFFCF3;border:1px solid #E7DFCF;border-radius:12px;padding:32px;">
+        <h1 style="font-size:22px;margin:0 0 12px;color:#20241D;">Payment confirmed</h1>
+        <p style="color:#4B4A45;">Hi {recipient_name or 'there'}, thanks for your order — payment for
+        <b>{order.get('order_number')}</b> is confirmed.</p>
+        <table style="width:100%;border-collapse:collapse;margin:20px 0;">{items_html}</table>
+        <p style="font-size:18px;font-weight:600;text-align:right;">Total: ₹{float(order.get('total', 0)):.2f}</p>
+        <hr style="border:none;border-top:1px solid #E7DFCF;margin:24px 0;" />
+        <p style="color:#8A8578;font-size:12px;">— Innovation Window India · Nourish Naturally</p>
+      </div>
+    </body></html>
+    """
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+
+    try:
+        await aiosmtplib.send(
+            msg,
+            hostname=host,
+            port=port,
+            username=smtp_user,
+            password=smtp_password,
+            use_tls=(port == 465),
+            start_tls=(port == 587),
+            timeout=15,
+        )
+    except Exception as e:
+        logging.error(f"Order confirmation email failed to {recipient_email}: {e}")
+
+
+def _notify_order_confirmed(order: dict, *, email: str = "", name: str = "", phone: str = ""):
+    """Fire-and-forget payment confirmation over email + WhatsApp. Never blocks
+    or raises into the calling request — failures are just logged."""
+    if email:
+        asyncio.create_task(_send_order_confirmation_email(email, name, order))
+    if phone:
+        asyncio.create_task(_send_order_confirmation_whatsapp(phone, name, order))
+
+
+# ---------- Per-seller order tracking ----------
+def _initial_seller_status(items: List[dict], status: str) -> dict:
+    """One tracking entry per distinct seller represented in the order's
+    items, so a multi-vendor cart can be tracked/fulfilled seller-by-seller
+    independently of the order's own (payment-level) status."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    seller_ids = {it.get("seller_id") for it in items if it.get("seller_id")}
+    return {
+        sid: {
+            "status": status,
+            "tracking_number": "",
+            "carrier": "",
+            "updated_at": now_iso,
+            "history": [{"status": status, "at": now_iso, "note": "Order placed"}],
+        }
+        for sid in seller_ids
+    }
+
+
+async def _sellers_snapshot(items: List[dict]) -> dict:
+    """Denormalized {seller_id: {name, email}} snapshot stored on the order
+    at checkout time, so the buyer's tracker can show "Sold by ..." without
+    an extra lookup even if the seller account later changes its name."""
+    seller_ids = [it.get("seller_id") for it in items if it.get("seller_id")]
+    if not seller_ids:
+        return {}
+    out = {}
+    async for u in db.users.find({"_id": {"$in": [ObjectId(sid) for sid in set(seller_ids)]}}):
+        out[str(u["_id"])] = {"name": u.get("name", ""), "email": u.get("email", "")}
+    return out
+
+
+async def _mark_seller_statuses_confirmed(order_doc: dict):
+    """Transition every pending per-seller entry to confirmed once payment
+    clears (used after a Razorpay payment is verified)."""
+    seller_status = order_doc.get("seller_status") or {}
+    if not seller_status:
+        return
+    now_iso = datetime.now(timezone.utc).isoformat()
+    set_fields = {}
+    for sid, entry in seller_status.items():
+        if entry.get("status") == "pending":
+            set_fields[f"seller_status.{sid}.status"] = "confirmed"
+            set_fields[f"seller_status.{sid}.updated_at"] = now_iso
+    if set_fields:
+        await db.orders.update_one(
+            {"_id": order_doc["_id"]},
+            {"$set": set_fields, "$push": {
+                f"seller_status.{sid}.history": {"status": "confirmed", "at": now_iso, "note": "Payment received"}
+                for sid in seller_status if seller_status[sid].get("status") == "pending"
+            }},
+        )
+
+
 # ---------- Orders (mock checkout) ----------
 @api_router.post("/orders/checkout")
 async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user)):
@@ -797,16 +978,19 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
     shipping = _shipping_for(subtotal)
     total = round(subtotal + tax + shipping, 2)
 
+    order_items = [{
+        "product_id": i["product_id"],
+        "title": i["product"]["title"] if i["product"] else "",
+        "price": i["unit_price"],
+        "quantity": i["quantity"],
+        "variant_label": i.get("variant_label", ""),
+        "image_url": i["product"]["image_url"] if i["product"] else "",
+        "seller_id": i["product"].get("seller_id") if i["product"] else None,
+    } for i in items]
+
     order = {
         "user_id": user["id"],
-        "items": [{
-            "product_id": i["product_id"],
-            "title": i["product"]["title"] if i["product"] else "",
-            "price": i["unit_price"],
-            "quantity": i["quantity"],
-            "variant_label": i.get("variant_label", ""),
-            "image_url": i["product"]["image_url"] if i["product"] else "",
-        } for i in items],
+        "items": order_items,
         "address": payload.address,
         "payment_method": payload.payment_method,
         "subtotal": round(subtotal, 2),
@@ -821,11 +1005,14 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
             "at": datetime.now(timezone.utc).isoformat(),
             "note": "Order placed",
         }],
+        "sellers": await _sellers_snapshot(order_items),
+        "seller_status": _initial_seller_status(order_items, "confirmed"),
     }
     res = await db.orders.insert_one(order)
     await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": []}}, upsert=True)
     order["id"] = str(res.inserted_id)
     order.pop("_id", None)
+    _notify_order_confirmed(order, email=user.get("email", ""), name=user.get("name", ""), phone=(payload.address or {}).get("phone", ""))
     return order
 
 
@@ -916,6 +1103,83 @@ async def admin_update_order_status(order_id: str, payload: OrderStatusUpdate, _
     return updated
 
 
+SELLER_ORDER_STATUS_FLOW = ["confirmed", "processing", "shipped", "delivered", "cancelled"]
+
+
+def _seller_order_view(order_doc: dict, seller_id: str) -> dict:
+    """Scope a full order down to what one seller should see: their own line
+    items and their own fulfillment entry, not other sellers' details."""
+    out = dict(order_doc)
+    out["id"] = str(out["_id"])
+    out.pop("_id", None)
+    out["items"] = [it for it in out.get("items", []) if it.get("seller_id") == seller_id]
+    out["seller_subtotal"] = round(sum(float(it.get("price", 0)) * int(it.get("quantity", 0)) for it in out["items"]), 2)
+    out["seller_fulfillment"] = (out.get("seller_status") or {}).get(seller_id, {})
+    out.pop("seller_status", None)
+    out.pop("sellers", None)
+    return out
+
+
+@api_router.get("/seller/orders")
+async def list_seller_orders(user: dict = Depends(require_seller)):
+    if user.get("role") == "admin":
+        cursor = db.orders.find({}).sort([("created_at", -1)])
+        out = []
+        async for o in cursor:
+            o["id"] = str(o["_id"])
+            o.pop("_id", None)
+            out.append(o)
+        return {"orders": out}
+
+    cursor = db.orders.find({"items.seller_id": user["id"]}).sort([("created_at", -1)])
+    out = [_seller_order_view(o, user["id"]) async for o in cursor]
+    return {"orders": out}
+
+
+class SellerOrderStatusUpdate(BaseModel):
+    status: str
+    tracking_number: str = ""
+    carrier: str = ""
+
+
+@api_router.patch("/seller/orders/{order_id}/status")
+async def seller_update_order_status(order_id: str, payload: SellerOrderStatusUpdate, user: dict = Depends(require_seller)):
+    if payload.status not in SELLER_ORDER_STATUS_FLOW:
+        raise HTTPException(status_code=400, detail=f"status must be one of {SELLER_ORDER_STATUS_FLOW}")
+    try:
+        oid = ObjectId(order_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    order_doc = await db.orders.find_one({"_id": oid})
+    if not order_doc:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    seller_id = user["id"]
+    if user.get("role") != "admin" and not any(it.get("seller_id") == seller_id for it in order_doc.get("items", [])):
+        raise HTTPException(status_code=403, detail="This order doesn't contain any of your products")
+    if seller_id not in (order_doc.get("seller_status") or {}):
+        raise HTTPException(status_code=404, detail="No fulfillment record for this seller on this order")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    event = {"status": payload.status, "at": now_iso, "note": f"Marked {payload.status} by seller"}
+    set_fields = {
+        f"seller_status.{seller_id}.status": payload.status,
+        f"seller_status.{seller_id}.updated_at": now_iso,
+    }
+    if payload.tracking_number:
+        set_fields[f"seller_status.{seller_id}.tracking_number"] = payload.tracking_number
+        event["note"] = f"Shipped via {payload.carrier or 'courier'} · {payload.tracking_number}"
+    if payload.carrier:
+        set_fields[f"seller_status.{seller_id}.carrier"] = payload.carrier
+
+    await db.orders.update_one(
+        {"_id": oid},
+        {"$set": set_fields, "$push": {f"seller_status.{seller_id}.history": event}},
+    )
+    updated = await db.orders.find_one({"_id": oid})
+    return _seller_order_view(updated, seller_id)
+
+
 # ---------- Razorpay payments ----------
 class RazorpayCreateInput(BaseModel):
     address: dict
@@ -961,16 +1225,19 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
     amount_paise = int(round(total * 100))
 
     # Persist internal pending order first so we can bind to razorpay_order_id
+    razorpay_items = [{
+        "product_id": i["product_id"],
+        "title": i["product"]["title"] if i["product"] else "",
+        "price": i["unit_price"],
+        "quantity": i["quantity"],
+        "variant_label": i.get("variant_label", ""),
+        "image_url": i["product"]["image_url"] if i["product"] else "",
+        "seller_id": i["product"].get("seller_id") if i["product"] else None,
+    } for i in items]
+
     order = {
         "user_id": user["id"],
-        "items": [{
-            "product_id": i["product_id"],
-            "title": i["product"]["title"] if i["product"] else "",
-            "price": i["unit_price"],
-            "quantity": i["quantity"],
-            "variant_label": i.get("variant_label", ""),
-            "image_url": i["product"]["image_url"] if i["product"] else "",
-        } for i in items],
+        "items": razorpay_items,
         "address": payload.address,
         "payment_method": "razorpay",
         "subtotal": round(subtotal, 2),
@@ -987,6 +1254,8 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
             "at": datetime.now(timezone.utc).isoformat(),
             "note": "Awaiting payment",
         }],
+        "sellers": await _sellers_snapshot(razorpay_items),
+        "seller_status": _initial_seller_status(razorpay_items, "pending"),
     }
     res = await db.orders.insert_one(order)
     our_order_id = str(res.inserted_id)
@@ -1060,8 +1329,11 @@ async def verify_razorpay(payload: RazorpayVerifyInput, user: dict = Depends(get
     # empty cart on successful payment
     await db.carts.update_one({"user_id": user["id"]}, {"$set": {"items": []}}, upsert=True)
     o = await db.orders.find_one({"_id": oid})
+    await _mark_seller_statuses_confirmed(o)
+    o = await db.orders.find_one({"_id": oid})  # re-fetch to pick up the seller_status transition
     o["id"] = str(o["_id"])
     o.pop("_id", None)
+    _notify_order_confirmed(o, email=user.get("email", ""), name=user.get("name", ""), phone=(o.get("address") or {}).get("phone", ""))
     return o
 
 
@@ -1122,6 +1394,7 @@ async def _price_guest_items(items: List[GuestCartItem]) -> List[dict]:
             "quantity": it.quantity,
             "variant_label": it.variant_label or "",
             "image_url": prod.get("image_url", ""),
+            "seller_id": prod.get("seller_id"),
         })
     return priced
 
@@ -1184,12 +1457,15 @@ async def guest_checkout(payload: GuestCheckoutInput):
         "at": datetime.now(timezone.utc).isoformat(),
         "note": "Guest order placed",
     }]
+    order["sellers"] = await _sellers_snapshot(priced)
+    order["seller_status"] = _initial_seller_status(priced, "confirmed")
 
     res = await db.orders.insert_one(order)
     if order["coupon_code"]:
         await db.coupons.update_one({"code": order["coupon_code"]}, {"$inc": {"uses": 1}})
     order["id"] = str(res.inserted_id)
     order.pop("_id", None)
+    _notify_order_confirmed(order, email=payload.contact.email, name=payload.contact.name, phone=payload.contact.phone)
     return order
 
 
@@ -1224,6 +1500,8 @@ async def guest_create_razorpay(payload: GuestCheckoutInput):
         "at": datetime.now(timezone.utc).isoformat(),
         "note": "Awaiting guest payment",
     }]
+    order["sellers"] = await _sellers_snapshot(priced)
+    order["seller_status"] = _initial_seller_status(priced, "pending")
 
     res = await db.orders.insert_one(order)
     our_order_id = str(res.inserted_id)
@@ -1295,8 +1573,12 @@ async def guest_verify_razorpay(payload: GuestVerifyInput):
          "$push": {"status_history": {"status": "confirmed", "at": now, "note": "Payment received"}}},
     )
     o = await db.orders.find_one({"_id": oid})
+    await _mark_seller_statuses_confirmed(o)
+    o = await db.orders.find_one({"_id": oid})  # re-fetch to pick up the seller_status transition
     o["id"] = str(o["_id"])
     o.pop("_id", None)
+    contact = o.get("contact") or {}
+    _notify_order_confirmed(o, email=contact.get("email", ""), name=contact.get("name", ""), phone=contact.get("phone", ""))
     return o
 
 
@@ -1489,7 +1771,18 @@ async def razorpay_webhook(request: Request):
                         "confirmed_via": "webhook",
                     }},
                 )
-                await db.carts.update_one({"user_id": o["user_id"]}, {"$set": {"items": []}}, upsert=True)
+                if o.get("user_id"):
+                    await db.carts.update_one({"user_id": o["user_id"]}, {"$set": {"items": []}}, upsert=True)
+                await _mark_seller_statuses_confirmed(o)
+                if o.get("guest"):
+                    contact = o.get("contact") or {}
+                    email, name, phone = contact.get("email", ""), contact.get("name", ""), contact.get("phone", "")
+                else:
+                    buyer = await db.users.find_one({"_id": ObjectId(o["user_id"])}) if o.get("user_id") else None
+                    email = buyer.get("email", "") if buyer else ""
+                    name = buyer.get("name", "") if buyer else ""
+                    phone = (o.get("address") or {}).get("phone", "")
+                _notify_order_confirmed(o, email=email, name=name, phone=phone)
     return {"ok": True, "event": event}
 
 
@@ -1668,6 +1961,42 @@ async def admin_stats(_: dict = Depends(require_admin)):
         "total_customers": total_customers,
         "open_complaints": open_complaints,
     }
+
+
+@api_router.get("/admin/stats/sellers")
+async def admin_seller_stats(_: dict = Depends(require_admin)):
+    """Seller-wise gist: per-seller order/item/revenue counts and how many of
+    their fulfillments are still open, computed from every order's items."""
+    sellers: dict = {}
+    async for u in db.users.find({"role": "seller"}):
+        sid = str(u["_id"])
+        sellers[sid] = {
+            "seller_id": sid, "name": u.get("name", ""), "email": u.get("email", ""),
+            "orders": 0, "items_sold": 0, "revenue": 0.0, "pending_fulfillments": 0,
+        }
+
+    async for o in db.orders.find({}, {"items": 1, "seller_status": 1, "status": 1}):
+        order_status = o.get("status") or "pending"
+        seller_status = o.get("seller_status") or {}
+        sellers_in_order = set()
+        for it in o.get("items", []):
+            sid = it.get("seller_id")
+            if not sid or sid not in sellers:
+                continue
+            sellers_in_order.add(sid)
+            if order_status not in NON_REVENUE_STATUSES:
+                sellers[sid]["items_sold"] += int(it.get("quantity", 0))
+                sellers[sid]["revenue"] += float(it.get("price", 0)) * int(it.get("quantity", 0))
+        for sid in sellers_in_order:
+            sellers[sid]["orders"] += 1
+            fulfillment_status = seller_status.get(sid, {}).get("status")
+            if fulfillment_status and fulfillment_status not in ("delivered", "cancelled"):
+                sellers[sid]["pending_fulfillments"] += 1
+
+    out = sorted(sellers.values(), key=lambda s: s["revenue"], reverse=True)
+    for s in out:
+        s["revenue"] = round(s["revenue"], 2)
+    return {"items": out}
 
 
 # ---------- Complaints / issues (raised by buyers & sellers) ----------
