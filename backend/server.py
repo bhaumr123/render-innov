@@ -544,7 +544,13 @@ async def reset_password(payload: ResetPasswordInput):
         oid = ObjectId(matched["user_id"])
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid token")
-    await db.users.update_one({"_id": oid}, {"$set": {"password_hash": hash_password(payload.new_password)}})
+    # `password_reset_at` also tells the admin-seed step (below) that this
+    # account's password is now self-managed, so a server restart won't
+    # silently overwrite it back to the ADMIN_PASSWORD env value.
+    await db.users.update_one(
+        {"_id": oid},
+        {"$set": {"password_hash": hash_password(payload.new_password), "password_reset_at": now.isoformat()}},
+    )
     await db.password_reset_tokens.update_one({"_id": matched["_id"]}, {"$set": {"used": True, "used_at": now}})
     # Invalidate all other unused tokens for this user
     await db.password_reset_tokens.update_many(
@@ -2329,7 +2335,10 @@ async def startup_event():
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.info(f"Seeded admin user: {admin_email}")
-    elif not verify_password(admin_password, existing["password_hash"]):
+    elif not existing.get("password_reset_at") and not verify_password(admin_password, existing["password_hash"]):
+        # Keeps the admin account in sync with ADMIN_PASSWORD on restart —
+        # but only until the admin sets their own password via "Forgot
+        # password?", after which self-service resets are never clobbered.
         await db.users.update_one({"email": admin_email},
                                   {"$set": {"password_hash": hash_password(admin_password),
                                             "role": "admin"}})
