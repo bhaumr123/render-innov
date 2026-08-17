@@ -1,16 +1,19 @@
 import React, { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LOGO } from "@/lib/assets";
+import { AlertTriangle } from "lucide-react";
 
 export default function Login() {
   const { login, error, setError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const from = location.state?.from || "/";
+  const sessionReplaced = searchParams.get("reason") === "session_replaced";
 
   return (
     <div className="max-w-md mx-auto px-4 py-12">
@@ -21,6 +24,15 @@ export default function Login() {
           <div className="text-[10px] tracking-[0.25em] uppercase text-sage">Nourish Naturally</div>
         </div>
       </Link>
+      {sessionReplaced && (
+        <div
+          className="max-w-md mx-auto mb-4 flex items-start gap-2 text-sm text-terracotta bg-terracotta/5 border border-terracotta/30 rounded-lg px-4 py-3"
+          data-testid="login-session-replaced-notice"
+        >
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <span>You were signed out because this account was signed in from another device. Only one session is allowed at a time.</span>
+        </div>
+      )}
       <div className="bg-surface border border-warm rounded-lg p-8">
         <Tabs defaultValue="buyer" onValueChange={() => setError("")}>
           <TabsList className="w-full grid grid-cols-2 mb-5">

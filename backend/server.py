@@ -78,20 +78,25 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
+SESSION_SUPERSEDED_DETAIL = "Session ended — you're signed in from another device."
+
+
+def create_access_token(user_id: str, email: str, role: str, session_id: str = "") -> str:
     payload = {
         "sub": user_id, "email": email, "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(hours=24),
         "type": "access",
+        "sid": session_id,
     }
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, session_id: str = "") -> str:
     payload = {
         "sub": user_id,
         "exp": datetime.now(timezone.utc) + timedelta(days=7),
         "type": "refresh",
+        "sid": session_id,
     }
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
@@ -306,6 +311,20 @@ async def get_current_user(request: Request) -> dict:
         user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+        # One active session per account for buyers/sellers: every login/
+        # register mints a fresh session_id and stores it on the user doc,
+        # superseding any session already in progress elsewhere. A token
+        # whose "sid" claim doesn't match what's currently stored belongs to
+        # a session that's been logged out from under it. Tokens issued
+        # before this feature carry no "sid" claim (""), which only matches
+        # an unmigrated account (no session_id set yet) — so existing
+        # sessions keep working until the next login, instead of everyone
+        # being force-logged-out on deploy. The admin account is exempt —
+        # there's only ever one of it (seeded from env vars, not
+        # self-registrable), so it's a single operator legitimately using
+        # multiple devices, not the account-sharing risk this guards against.
+        if user.get("role") != "admin" and payload.get("sid", "") != user.get("session_id", ""):
+            raise HTTPException(status_code=401, detail=SESSION_SUPERSEDED_DETAIL)
         user["id"] = str(user["_id"])
         user.pop("_id", None)
         user.pop("password_hash", None)
@@ -384,6 +403,7 @@ async def register(payload: RegisterInput, response: Response):
         code = await _next_code("VEN", "seller_code")
     else:
         code = await _next_code("CUS", "customer_code")
+    session_id = secrets.token_urlsafe(16)
     doc = {
         "email": email,
         "password_hash": hash_password(payload.password),
@@ -393,12 +413,13 @@ async def register(payload: RegisterInput, response: Response):
         "state": payload.state if role == "seller" else "",
         "city": payload.city.strip() if role == "seller" else "",
         "gst_number": payload.gst_number,
+        "session_id": session_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.users.insert_one(doc)
     uid = str(res.inserted_id)
-    access = create_access_token(uid, email, role)
-    refresh = create_refresh_token(uid)
+    access = create_access_token(uid, email, role, session_id)
+    refresh = create_refresh_token(uid, session_id)
     set_auth_cookies(response, access, refresh)
     if role == "seller":
         asyncio.create_task(_notify_admin_new_seller(doc))
@@ -428,8 +449,13 @@ async def login(payload: LoginInput, response: Response):
     uid = str(user["_id"])
     role = user.get("role", "customer")
     code = await _ensure_user_code(uid, role, user.get("code", ""))
-    access = create_access_token(uid, email, role)
-    refresh = create_refresh_token(uid)
+    # One active session per account: a fresh session_id here immediately
+    # invalidates whatever token(s) this account had in play anywhere else —
+    # their "sid" claim will no longer match once this overwrites it.
+    session_id = secrets.token_urlsafe(16)
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {"session_id": session_id}})
+    access = create_access_token(uid, email, role, session_id)
+    refresh = create_refresh_token(uid, session_id)
     set_auth_cookies(response, access, refresh)
     return {
         "id": uid, "email": email, "name": user.get("name", ""), "role": role,
@@ -439,7 +465,12 @@ async def login(payload: LoginInput, response: Response):
 
 
 @api_router.post("/auth/logout")
-async def logout(response: Response):
+async def logout(response: Response, user: Optional[dict] = Depends(get_current_user_optional)):
+    # Clear the server-side session too, not just this browser's cookies —
+    # otherwise a copied/leaked access token would keep working (its "sid"
+    # claim would still match) right up until it naturally expires.
+    if user:
+        await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": {"session_id": ""}})
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
     return {"ok": True}
