@@ -17,11 +17,12 @@ import aiosmtplib
 from email.message import EmailMessage
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Annotated
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, BeforeValidator
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, BeforeValidator, field_validator
 
 
 # ---------- MongoDB ----------
@@ -100,6 +101,15 @@ class RegisterInput(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
     name: str = Field(min_length=1, max_length=80)
+    role: str = "customer"
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        # Public registration may only create customer or seller accounts.
+        if v not in ("customer", "seller"):
+            return "customer"
+        return v
 
 
 class LoginInput(BaseModel):
@@ -117,11 +127,13 @@ class UserOut(BaseModel):
 class ProductIn(BaseModel):
     title: str
     description: str = ""
-    price: float
-    category: str
+    price: float = 0
+    category: str = "General"
     stock: int = 100
     image_url: str = ""
     images: List[str] = []
+    qr_code_url: str = ""  # seller's payment QR code (e.g. UPI QR)
+    seller_id: Optional[str] = None
     rating: float = 4.9
     reviews_count: int = 0
     brand: str = "IWI"
@@ -185,6 +197,12 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+async def require_seller(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") not in ("seller", "admin"):
+        raise HTTPException(status_code=403, detail="Seller account required")
+    return user
+
+
 def product_doc_to_out(doc: dict) -> dict:
     return {
         "id": str(doc["_id"]),
@@ -195,6 +213,8 @@ def product_doc_to_out(doc: dict) -> dict:
         "stock": int(doc.get("stock", 0)),
         "image_url": doc.get("image_url", ""),
         "images": doc.get("images", []),
+        "qr_code_url": doc.get("qr_code_url", ""),
+        "seller_id": doc.get("seller_id"),
         "rating": float(doc.get("rating", 4.9)),
         "reviews_count": int(doc.get("reviews_count", 0)),
         "brand": doc.get("brand", "IWI"),
@@ -209,19 +229,20 @@ async def register(payload: RegisterInput, response: Response):
     email = payload.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
+    role = payload.role  # already restricted to customer/seller by validator
     doc = {
         "email": email,
         "password_hash": hash_password(payload.password),
         "name": payload.name,
-        "role": "customer",
+        "role": role,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.users.insert_one(doc)
     uid = str(res.inserted_id)
-    access = create_access_token(uid, email, "customer")
+    access = create_access_token(uid, email, role)
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
-    return {"id": uid, "email": email, "name": payload.name, "role": "customer"}
+    return {"id": uid, "email": email, "name": payload.name, "role": role}
 
 
 @api_router.post("/auth/login", response_model=UserOut)
@@ -373,6 +394,29 @@ async def reset_password(payload: ResetPasswordInput):
     return {"ok": True, "message": "Your password has been reset. Please sign in with your new password."}
 
 
+# ---------- Uploads ----------
+UPLOAD_DIR = ROOT_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+ALLOWED_UPLOAD_TYPES = {
+    "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
+}
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5MB
+
+
+@api_router.post("/uploads")
+async def upload_image(file: UploadFile = File(...), _: dict = Depends(get_current_user)):
+    ext = ALLOWED_UPLOAD_TYPES.get(file.content_type)
+    if not ext:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, WEBP or GIF images are allowed")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
+    filename = f"{uuid.uuid4().hex}{ext}"
+    (UPLOAD_DIR / filename).write_bytes(data)
+    return {"url": f"/uploads/{filename}"}
+
+
 # ---------- Products ----------
 @api_router.get("/products")
 async def list_products(
@@ -433,21 +477,45 @@ async def get_product(product_id: str):
 
 
 @api_router.post("/products")
-async def create_product(payload: ProductIn, _: dict = Depends(require_admin)):
+async def create_product(payload: ProductIn, user: dict = Depends(require_seller)):
     doc = payload.model_dump()
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    # Sellers can only ever own the products they create; admins may set seller_id explicitly.
+    if user.get("role") == "seller":
+        doc["seller_id"] = user["id"]
     res = await db.products.insert_one(doc)
     doc["_id"] = res.inserted_id
     return product_doc_to_out(doc)
 
 
-@api_router.put("/products/{product_id}")
-async def update_product(product_id: str, payload: ProductIn, _: dict = Depends(require_admin)):
+async def _get_owned_product(product_id: str, user: dict) -> ObjectId:
     try:
         oid = ObjectId(product_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid product id")
-    await db.products.update_one({"_id": oid}, {"$set": payload.model_dump()})
+    doc = await db.products.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if user.get("role") != "admin" and doc.get("seller_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only manage your own products")
+    return oid
+
+
+@api_router.get("/seller/products")
+async def list_seller_products(user: dict = Depends(require_seller)):
+    query = {} if user.get("role") == "admin" else {"seller_id": user["id"]}
+    cursor = db.products.find(query).sort([("created_at", -1)])
+    items = [product_doc_to_out(d) async for d in cursor]
+    return {"items": items, "total": len(items)}
+
+
+@api_router.put("/products/{product_id}")
+async def update_product(product_id: str, payload: ProductIn, user: dict = Depends(require_seller)):
+    oid = await _get_owned_product(product_id, user)
+    body = payload.model_dump()
+    if user.get("role") == "seller":
+        body["seller_id"] = user["id"]  # ownership can't be reassigned by a seller
+    await db.products.update_one({"_id": oid}, {"$set": body})
     doc = await db.products.find_one({"_id": oid})
     if not doc:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -455,11 +523,8 @@ async def update_product(product_id: str, payload: ProductIn, _: dict = Depends(
 
 
 @api_router.delete("/products/{product_id}")
-async def delete_product(product_id: str, _: dict = Depends(require_admin)):
-    try:
-        oid = ObjectId(product_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid product id")
+async def delete_product(product_id: str, user: dict = Depends(require_seller)):
+    oid = await _get_owned_product(product_id, user)
     await db.products.delete_one({"_id": oid})
     return {"ok": True}
 
@@ -1463,6 +1528,7 @@ async def root():
 
 
 app.include_router(api_router)
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

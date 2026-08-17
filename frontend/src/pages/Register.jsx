@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,16 +7,18 @@ import { LOGO } from "@/lib/assets";
 
 export default function Register() {
   const { register, error, setError } = useAuth();
+  const [searchParams] = useSearchParams();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState(searchParams.get("role") === "seller" ? "seller" : "customer");
   const navigate = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    const ok = await register(email, password, name);
-    if (ok) navigate("/", { replace: true });
+    const ok = await register(email, password, name, role);
+    if (ok) navigate(role === "seller" ? "/seller/dashboard" : "/", { replace: true });
   };
 
   return (
@@ -31,6 +33,26 @@ export default function Register() {
       <div className="bg-surface border border-warm rounded-lg p-8">
         <h1 className="font-heading text-2xl font-semibold mb-1">Join the apothecary</h1>
         <p className="text-sm text-muted-warm mb-5">Save orders, track shipments and check out faster.</p>
+
+        <div className="grid grid-cols-2 gap-2 mb-5">
+          <button
+            type="button"
+            data-testid="reg-role-buyer"
+            onClick={() => setRole("customer")}
+            className={`text-sm rounded-full py-2 border transition-colors ${role === "customer" ? "bg-ink text-cream border-ink" : "border-warm text-ink hover:bg-parchment"}`}
+          >
+            I'm a buyer
+          </button>
+          <button
+            type="button"
+            data-testid="reg-role-seller"
+            onClick={() => setRole("seller")}
+            className={`text-sm rounded-full py-2 border transition-colors ${role === "seller" ? "bg-ink text-cream border-ink" : "border-warm text-ink hover:bg-parchment"}`}
+          >
+            I'm a seller
+          </button>
+        </div>
+
         <form onSubmit={submit} className="space-y-4" data-testid="register-form">
           <div>
             <Label htmlFor="name">Your name</Label>
@@ -51,7 +73,7 @@ export default function Register() {
             data-testid="reg-submit"
             className="w-full bg-ink text-cream text-sm font-medium rounded-full py-3 hover:bg-terracotta transition-colors"
           >
-            Create account
+            {role === "seller" ? "Create seller account" : "Create account"}
           </button>
         </form>
         <div className="text-xs text-muted-warm text-center mt-4">

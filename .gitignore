@@ -52,6 +52,9 @@ __pycache__/
 venv/
 .venv/
 
+# User-uploaded files (seller product photos / QR codes)
+backend/uploads/
+
 # Development tools
 chainlit.md
 .chainlit

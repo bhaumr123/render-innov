@@ -111,6 +111,9 @@ export default function Header() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild><Link to="/orders" data-testid="menu-orders">Your orders</Link></DropdownMenuItem>
+                  {(user.role === "seller" || user.role === "admin") && (
+                    <DropdownMenuItem asChild><Link to="/seller/dashboard" data-testid="menu-seller-dashboard">Seller dashboard</Link></DropdownMenuItem>
+                  )}
                   {user.role === "admin" && (
                     <DropdownMenuItem asChild><Link to="/admin" data-testid="menu-admin">Admin panel</Link></DropdownMenuItem>
                   )}

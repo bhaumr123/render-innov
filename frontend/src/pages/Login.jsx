@@ -3,22 +3,14 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LOGO } from "@/lib/assets";
 
 export default function Login() {
   const { login, error, setError } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from || "/";
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError("");
-    const ok = await login(email, password);
-    if (ok) navigate(from, { replace: true });
-  };
 
   return (
     <div className="max-w-md mx-auto px-4 py-12">
@@ -30,35 +22,109 @@ export default function Login() {
         </div>
       </Link>
       <div className="bg-surface border border-warm rounded-lg p-8">
-        <h1 className="font-heading text-2xl font-semibold mb-1">Welcome back</h1>
-        <p className="text-sm text-muted-warm mb-5">Sign in to view orders and manage your basket.</p>
-        <form onSubmit={submit} className="space-y-4" data-testid="login-form">
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" data-testid="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link to="/forgot-password" data-testid="login-forgot-link" className="text-xs text-terracotta hover:underline">
-                Forgot password?
-              </Link>
+        <Tabs defaultValue="buyer" onValueChange={() => setError("")}>
+          <TabsList className="w-full grid grid-cols-2 mb-5">
+            <TabsTrigger value="buyer" data-testid="login-tab-buyer">Buyer</TabsTrigger>
+            <TabsTrigger value="seller" data-testid="login-tab-seller">Seller</TabsTrigger>
+          </TabsList>
+
+          {/* Buyer: plain, simple sign-in form */}
+          <TabsContent value="buyer">
+            <h1 className="font-heading text-2xl font-semibold mb-1">Welcome back</h1>
+            <p className="text-sm text-muted-warm mb-5">Sign in to view orders and manage your basket.</p>
+            <BuyerLoginForm login={login} error={error} setError={setError} onSuccess={() => navigate(from, { replace: true })} />
+            <div className="text-xs text-muted-warm text-center mt-4">
+              New here? <Link to="/register" data-testid="login-to-register" className="text-terracotta hover:underline">Create an account</Link>
             </div>
-            <Input id="password" data-testid="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </div>
-          {error && <div className="text-sm text-terracotta" data-testid="login-error">{error}</div>}
-          <button
-            type="submit"
-            data-testid="login-submit"
-            className="w-full bg-ink text-cream text-sm font-medium rounded-full py-3 hover:bg-terracotta transition-colors"
-          >
-            Sign in
-          </button>
-        </form>
-        <div className="text-xs text-muted-warm text-center mt-4">
-          New here? <Link to="/register" data-testid="login-to-register" className="text-terracotta hover:underline">Create an account</Link>
-        </div>
+          </TabsContent>
+
+          {/* Seller: dedicated sign-in section */}
+          <TabsContent value="seller">
+            <h1 className="font-heading text-2xl font-semibold mb-1">Seller sign in</h1>
+            <p className="text-sm text-muted-warm mb-5">Sign in to list products and manage your storefront.</p>
+            <SellerLoginForm login={login} error={error} setError={setError} onSuccess={() => navigate("/seller/dashboard", { replace: true })} />
+            <div className="text-xs text-muted-warm text-center mt-4">
+              New seller? <Link to="/register?role=seller" data-testid="login-to-seller-register" className="text-terracotta hover:underline">Create a seller account</Link>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
+  );
+}
+
+function BuyerLoginForm({ login, error, setError, onSuccess }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    const ok = await login(email, password);
+    if (ok) onSuccess();
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4" data-testid="login-form">
+      <div>
+        <Label htmlFor="email">Email</Label>
+        <Input id="email" data-testid="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      </div>
+      <div>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Password</Label>
+          <Link to="/forgot-password" data-testid="login-forgot-link" className="text-xs text-terracotta hover:underline">
+            Forgot password?
+          </Link>
+        </div>
+        <Input id="password" data-testid="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      </div>
+      {error && <div className="text-sm text-terracotta" data-testid="login-error">{error}</div>}
+      <button
+        type="submit"
+        data-testid="login-submit"
+        className="w-full bg-ink text-cream text-sm font-medium rounded-full py-3 hover:bg-terracotta transition-colors"
+      >
+        Sign in
+      </button>
+    </form>
+  );
+}
+
+function SellerLoginForm({ login, error, setError, onSuccess }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    const ok = await login(email, password);
+    if (ok) onSuccess();
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4" data-testid="seller-login-form">
+      <div>
+        <Label htmlFor="seller-email">Email</Label>
+        <Input id="seller-email" data-testid="seller-login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      </div>
+      <div>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="seller-password">Password</Label>
+          <Link to="/forgot-password" data-testid="seller-login-forgot-link" className="text-xs text-terracotta hover:underline">
+            Forgot password?
+          </Link>
+        </div>
+        <Input id="seller-password" data-testid="seller-login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      </div>
+      {error && <div className="text-sm text-terracotta" data-testid="seller-login-error">{error}</div>}
+      <button
+        type="submit"
+        data-testid="seller-login-submit"
+        className="w-full bg-ink text-cream text-sm font-medium rounded-full py-3 hover:bg-terracotta transition-colors"
+      >
+        Sign in as seller
+      </button>
+    </form>
   );
 }
