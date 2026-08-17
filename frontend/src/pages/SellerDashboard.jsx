@@ -10,6 +10,8 @@ import { useAuth } from "@/context/AuthContext";
 
 const emptyForm = { title: "", image_url: "", image_url_2: "", qr_code_url: "" };
 
+const FALLBACK_CATEGORIES = ["Herbal Tea", "Grocery", "Super Foods", "Artisanal Goods", "Spiritual", "Medicinal Roots"];
+
 // Packaging sizes are entered as a plain number; the unit the seller picks
 // decides how it's labelled and stored — liquids in ml, solids by weight in
 // grams, and anything else (beads, sachets, sets…) as a count of pieces.
@@ -44,6 +46,8 @@ export default function SellerDashboard() {
   const [form, setForm] = useState(emptyForm);
   const [unitType, setUnitType] = useState("count");
   const [gstRate, setGstRate] = useState("5");
+  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
+  const [category, setCategory] = useState(FALLBACK_CATEGORIES[0]);
   const [sizeRows, setSizeRows] = useState([emptySizeRow()]);
   const [imagePreview, setImagePreview] = useState("");
   const [image2Preview, setImage2Preview] = useState("");
@@ -54,8 +58,13 @@ export default function SellerDashboard() {
   const [saving, setSaving] = useState(false);
 
   const loadProducts = () => api.get("/seller/products").then((r) => setProducts(r.data.items || []));
+  const loadCategories = () => api.get("/products/categories").then((r) => {
+    const list = r.data.categories?.length ? r.data.categories : FALLBACK_CATEGORIES;
+    setCategories(list);
+    setCategory((c) => (list.includes(c) ? c : list[0]));
+  });
 
-  useEffect(() => { loadProducts(); }, []);
+  useEffect(() => { loadProducts(); loadCategories(); }, []);
 
   const uploadFile = async (file) => {
     const body = new FormData();
@@ -134,6 +143,7 @@ export default function SellerDashboard() {
     try {
       await api.post("/products", {
         title: form.title,
+        category,
         image_url: form.image_url,
         qr_code_url: form.qr_code_url,
         images: form.image_url_2 ? [form.image_url_2] : [],
@@ -146,6 +156,7 @@ export default function SellerDashboard() {
       setForm(emptyForm);
       setUnitType("count");
       setGstRate("5");
+      setCategory(categories[0] || FALLBACK_CATEGORIES[0]);
       setSizeRows([emptySizeRow()]);
       setImagePreview("");
       setImage2Preview("");
@@ -237,6 +248,16 @@ export default function SellerDashboard() {
               {unitType === "g" && "e.g. a 100 g pouch of spice powder"}
               {unitType === "count" && "e.g. a pack of 10 beads or sachets"}
             </div>
+          </div>
+
+          <div>
+            <Label>Category</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger data-testid="seller-category"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
@@ -407,6 +428,7 @@ export default function SellerDashboard() {
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium line-clamp-1">{p.title}</div>
+                  {p.category && <div className="text-[11px] text-sage uppercase tracking-widest mt-0.5">{p.category}</div>}
                   <div className="mt-1">
                     <ApprovalBadge status={p.approval_status} />
                   </div>

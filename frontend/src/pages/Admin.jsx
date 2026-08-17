@@ -15,10 +15,12 @@ import {
   IMG_ASHWAGANDHA, IMG_HONEY, IMG_LOOSE_TEA,
 } from "@/lib/assets";
 
-const CATEGORIES = ["Teas", "Spices", "Artisanal Goods"];
+// Fallback shown before /products/categories responds; the live list (server's
+// canonical taxonomy plus any legacy category strings) replaces this on load.
+const FALLBACK_CATEGORIES = ["Herbal Tea", "Grocery", "Super Foods", "Artisanal Goods", "Spiritual", "Medicinal Roots"];
 
 const emptyForm = {
-  title: "", description: "", price: "", category: "Teas",
+  title: "", description: "", price: "", category: "Herbal Tea",
   stock: 100, image_url: "", brand: "IWI", rating: 4.9, reviews_count: 0,
   size_variants: [], gst_rate: "5",
 };
@@ -30,6 +32,7 @@ export default function Admin() {
   const [stats, setStats] = useState(null);
   const [sellerStats, setSellerStats] = useState([]);
   const [complaints, setComplaints] = useState([]);
+  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [couponForm, setCouponForm] = useState({ code: "", discount_type: "percent", value: "", min_subtotal: 0, max_uses: 0, active: true });
@@ -40,8 +43,9 @@ export default function Admin() {
   const loadStats = () => api.get("/admin/stats").then((r) => setStats(r.data));
   const loadSellerStats = () => api.get("/admin/stats/sellers").then((r) => setSellerStats(r.data.items || []));
   const loadComplaints = () => api.get("/admin/complaints").then((r) => setComplaints(r.data.items || []));
+  const loadCategories = () => api.get("/products/categories").then((r) => setCategories(r.data.categories?.length ? r.data.categories : FALLBACK_CATEGORIES));
 
-  useEffect(() => { loadProducts(); loadOrders(); loadCoupons(); loadStats(); loadSellerStats(); loadComplaints(); }, []);
+  useEffect(() => { loadProducts(); loadOrders(); loadCoupons(); loadStats(); loadSellerStats(); loadComplaints(); loadCategories(); }, []);
 
   const submitCoupon = async (e) => {
     e.preventDefault();
@@ -140,9 +144,10 @@ export default function Admin() {
 
   const seedDemo = async () => {
     const demo = [
+      // ---------- Herbal Tea ----------
       {
         title: "Butterfly Pea Flower · Herbal Tea",
-        brand: "Blue Tea Co.", category: "Teas",
+        brand: "Blue Tea Co.", category: "Herbal Tea", gst_rate: 5,
         description: "Caffeine-free herbal infusion made from 100 hand-picked butterfly pea blossoms. A striking indigo brew.",
         price: 199, stock: 60, rating: 4.8, reviews_count: 214, image_url: IMG_BLUE_TEA,
         size_variants: [
@@ -153,7 +158,7 @@ export default function Admin() {
       },
       {
         title: "Marigold Petals · Loose Herbal",
-        brand: "IWI Apothecary", category: "Teas",
+        brand: "IWI Apothecary", category: "Herbal Tea", gst_rate: 5,
         description: "Sun-dried marigold petals. Steep for a soothing, honey-toned brew or blend into your own infusions.",
         price: 249, stock: 40, rating: 4.7, reviews_count: 89, image_url: IMG_LOOSE_TEA,
         size_variants: [
@@ -161,9 +166,10 @@ export default function Admin() {
           { label: "80g jar", price: 549, stock: 20 },
         ],
       },
+      // ---------- Grocery ----------
       {
         title: "TRJU Coriander (Dhaniya) Powder",
-        brand: "TRJU", category: "Spices",
+        brand: "TRJU", category: "Grocery", gst_rate: 5,
         description: "Freshly stone-ground coriander seeds. Bright, citrus-forward, essential in every Indian kitchen.",
         price: 79, stock: 120, rating: 4.6, reviews_count: 421, image_url: IMG_DHANIYA,
         size_variants: [
@@ -174,7 +180,7 @@ export default function Admin() {
       },
       {
         title: "Marwar Red Chilli Powder",
-        brand: "Marwar", category: "Spices",
+        brand: "Marwar", category: "Grocery", gst_rate: 5,
         description: "Sun-dried Rajasthani chillies, stone-ground. Vivid red colour with a warm, lingering heat.",
         price: 149, stock: 80, rating: 4.7, reviews_count: 312, image_url: IMG_CHILLI,
         size_variants: [
@@ -184,8 +190,29 @@ export default function Admin() {
         ],
       },
       {
+        title: "Sun-Dried Turmeric (Haldi) Powder",
+        brand: "TRJU", category: "Grocery", gst_rate: 5,
+        description: "Sun-dried, stone-ground turmeric root. High curcumin, deep golden colour, no additives.",
+        price: 99, stock: 100, rating: 4.7, reviews_count: 156, image_url: IMG_DHANIYA,
+        size_variants: [
+          { label: "100g", price: 99, stock: 100 },
+          { label: "250g", price: 219, stock: 60 },
+          { label: "500g", price: 399, stock: 30 },
+        ],
+      },
+      {
+        title: "Stone-Ground Cumin (Jeera) Powder",
+        brand: "Marwar", category: "Grocery", gst_rate: 5,
+        description: "Roasted and stone-ground cumin seeds. Warm, earthy aroma — a staple tempering spice.",
+        price: 109, stock: 100, rating: 4.6, reviews_count: 132, image_url: IMG_CHILLI,
+        size_variants: [
+          { label: "100g", price: 109, stock: 100 },
+          { label: "250g", price: 249, stock: 50 },
+        ],
+      },
+      {
         title: "Tata Cold-Pressed Mustard Oil",
-        brand: "Tata Simply Better", category: "Artisanal Goods",
+        brand: "Tata Simply Better", category: "Grocery", gst_rate: 5,
         description: "Kachi ghani cold-pressed mustard oil. Full aroma, unrefined, made in small batches.",
         price: 399, stock: 50, rating: 4.6, reviews_count: 178, image_url: IMG_OIL,
         size_variants: [
@@ -194,18 +221,18 @@ export default function Admin() {
         ],
       },
       {
-        title: "Ashwagandhadi Churna · Ayurvedic Tonic",
-        brand: "Baidyanath", category: "Artisanal Goods",
-        description: "Classical Ayurvedic churna blend with Ashwagandha at its heart. Traditionally used for calm and vitality.",
-        price: 189, stock: 60, rating: 4.8, reviews_count: 245, image_url: IMG_ASHWAGANDHA,
+        title: "Pure Desi Cow Ghee",
+        brand: "Honey Veda", category: "Grocery", gst_rate: 5,
+        description: "Slow-simmered, bilona-method desi cow ghee. Rich, grainy texture and a deep nutty aroma.",
+        price: 449, stock: 45, rating: 4.8, reviews_count: 201, image_url: IMG_OIL,
         size_variants: [
-          { label: "60g", price: 189, stock: 60 },
-          { label: "120g", price: 349, stock: 30 },
+          { label: "250 ml", price: 449, stock: 45 },
+          { label: "500 ml", price: 849, stock: 25 },
         ],
       },
       {
         title: "Himalayan Forest Honey · Raw & Unfiltered",
-        brand: "Honey Veda", category: "Artisanal Goods",
+        brand: "Honey Veda", category: "Grocery", gst_rate: 5,
         description: "Wild, raw, unfiltered honey collected from Himalayan forests. Rich amber, floral, mineral.",
         price: 549, stock: 40, rating: 4.9, reviews_count: 401, image_url: IMG_HONEY,
         size_variants: [
@@ -213,14 +240,96 @@ export default function Admin() {
           { label: "500g", price: 999, stock: 25 },
         ],
       },
+      // ---------- Artisanal Goods ----------
+      {
+        title: "Hand-Painted Terracotta Plate",
+        brand: "IWI Artisans", category: "Artisanal Goods", gst_rate: 18,
+        description: "Hand-thrown and hand-painted terracotta plate, glazed and fired by potters in rural Rajasthan.",
+        price: 449, stock: 30, rating: 4.8, reviews_count: 41, image_url: IMG_BEADS,
+        size_variants: [
+          { label: "8 inch", price: 449, stock: 30 },
+          { label: "10 inch", price: 599, stock: 20 },
+        ],
+      },
+      {
+        title: "Woven Jute Tote Bag",
+        brand: "IWI Artisans", category: "Artisanal Goods", gst_rate: 18,
+        description: "Hand-woven jute tote, natural fibre, stitched by a women's weaving collective.",
+        price: 349, stock: 50, rating: 4.7, reviews_count: 63, image_url: IMG_BEADS,
+        size_variants: [
+          { label: "Medium", price: 349, stock: 50 },
+          { label: "Large", price: 449, stock: 30 },
+        ],
+      },
+      // ---------- Super Foods ----------
+      {
+        title: "Raw Himalayan Bee Pollen",
+        brand: "Honey Veda", category: "Super Foods", gst_rate: 18,
+        description: "Nutrient-dense bee pollen granules, hand-collected from Himalayan foothill apiaries.",
+        price: 399, stock: 35, rating: 4.7, reviews_count: 58, image_url: IMG_HONEY,
+        size_variants: [
+          { label: "100g", price: 399, stock: 35 },
+          { label: "200g", price: 749, stock: 20 },
+        ],
+      },
+      // ---------- Spiritual ----------
       {
         title: "Tulsi Japa Mala · 108 Prayer Beads",
-        brand: "IWI Apothecary", category: "Artisanal Goods",
+        brand: "IWI Apothecary", category: "Spiritual", gst_rate: 5,
         description: "Hand-strung 108-bead Tulsi mala for meditation and mindful practice. Small red cotton tassel.",
         price: 799, stock: 25, rating: 5.0, reviews_count: 68, image_url: IMG_BEADS,
         size_variants: [
           { label: "6mm beads", price: 799, stock: 25 },
           { label: "8mm beads", price: 999, stock: 15 },
+        ],
+      },
+      {
+        title: "Sandalwood Incense Sticks",
+        brand: "IWI Apothecary", category: "Spiritual", gst_rate: 5,
+        description: "Hand-rolled sandalwood agarbatti, slow-burning with a warm, woody fragrance.",
+        price: 129, stock: 90, rating: 4.7, reviews_count: 149, image_url: IMG_ASHWAGANDHA,
+        size_variants: [
+          { label: "Pack of 20", price: 129, stock: 90 },
+          { label: "Pack of 50", price: 279, stock: 50 },
+        ],
+      },
+      {
+        title: "Temple Dhoop Cones",
+        brand: "IWI Apothecary", category: "Spiritual", gst_rate: 5,
+        description: "Hand-pressed dhoop cones made from natural resins and herbs, for daily puja.",
+        price: 149, stock: 80, rating: 4.6, reviews_count: 92, image_url: IMG_LOOSE_TEA,
+        size_variants: [
+          { label: "Pack of 12", price: 149, stock: 80 },
+        ],
+      },
+      {
+        title: "Dried Temple Flowers · Marigold Garland",
+        brand: "IWI Apothecary", category: "Spiritual", gst_rate: 5,
+        description: "Sun-dried marigold garlands for puja and temple offerings, sourced fresh and air-dried.",
+        price: 89, stock: 100, rating: 4.5, reviews_count: 37, image_url: IMG_BLUE_TEA,
+        size_variants: [
+          { label: "Single garland", price: 89, stock: 100 },
+        ],
+      },
+      // ---------- Medicinal Roots ----------
+      {
+        title: "Ashwagandhadi Churna · Ayurvedic Tonic",
+        brand: "Baidyanath", category: "Medicinal Roots", gst_rate: 18,
+        description: "Classical Ayurvedic churna ground from Ashwagandha root. Traditionally used for calm and vitality.",
+        price: 189, stock: 60, rating: 4.8, reviews_count: 245, image_url: IMG_ASHWAGANDHA,
+        size_variants: [
+          { label: "60g", price: 189, stock: 60 },
+          { label: "120g", price: 349, stock: 30 },
+        ],
+      },
+      {
+        title: "Wild Shatavari Root Powder",
+        brand: "Baidyanath", category: "Medicinal Roots", gst_rate: 18,
+        description: "Sun-dried and stone-ground Shatavari root, a classical Ayurvedic root used for restorative wellness.",
+        price: 219, stock: 45, rating: 4.6, reviews_count: 77, image_url: IMG_ASHWAGANDHA,
+        size_variants: [
+          { label: "50g", price: 219, stock: 45 },
+          { label: "100g", price: 399, stock: 25 },
         ],
       },
     ];
@@ -279,7 +388,7 @@ export default function Admin() {
               <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                 <SelectTrigger data-testid="admin-category"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

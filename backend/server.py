@@ -126,6 +126,21 @@ GST_RATES = (5, 18)
 GSTIN_REGEX = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
 
 
+# ---------- Product categories ----------
+# The storefront's canonical taxonomy — always offered in the admin/seller
+# "Category" pickers and the nav/home dropdowns, even for a category with no
+# products listed yet. `/products/categories` unions this with whatever else
+# is already in the DB, so older/custom category strings still surface.
+PRODUCT_CATEGORIES = [
+    "Herbal Tea",
+    "Grocery",
+    "Super Foods",
+    "Artisanal Goods",
+    "Spiritual",
+    "Medicinal Roots",
+]
+
+
 # ---------- Sequential vendor/customer codes ----------
 async def _next_code(prefix: str, counter_name: str, width: int = 5) -> str:
     """Atomically increments a named counter and returns e.g. 'VEN-00001'.
@@ -647,8 +662,12 @@ async def list_products(
 
 @api_router.get("/products/categories")
 async def list_categories():
-    cats = await db.products.distinct("category")
-    return {"categories": sorted([c for c in cats if c])}
+    cats = set(await db.products.distinct("category"))
+    cats.update(PRODUCT_CATEGORIES)
+    # Canonical categories keep their curated display order; any extra/legacy
+    # category strings found only in the DB are appended alphabetically after.
+    extra = sorted(c for c in cats if c and c not in PRODUCT_CATEGORIES)
+    return {"categories": [c for c in PRODUCT_CATEGORIES if c in cats] + extra}
 
 
 @api_router.get("/products/states")
@@ -675,6 +694,42 @@ async def get_product(product_id: str, user: Optional[dict] = Depends(get_curren
         # the seller who submitted them — same as a 404 for a nonexistent product.
         raise HTTPException(status_code=404, detail="Product not found")
     return product_doc_to_out(doc)
+
+
+@api_router.get("/products/{product_id}/regional-options")
+async def product_regional_options(product_id: str, user: Optional[dict] = Depends(get_current_user_optional)):
+    """Same product name, different states. When two+ sellers list the same
+    item (e.g. "Honey") out of different states, the buyer's product screen
+    offers each state as a pickable option instead of showing only whichever
+    listing they happened to land on."""
+    try:
+        oid = ObjectId(product_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid product id")
+    doc = await db.products.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Product not found")
+    title = (doc.get("title") or "").strip()
+    if not title:
+        return {"items": []}
+
+    is_admin = bool(user) and user.get("role") == "admin"
+    query: dict = {"title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}}
+    if not is_admin:
+        query["$and"] = [{"$or": [
+            {"approval_status": "approved"},
+            {"approval_status": {"$exists": False}},
+        ]}]
+
+    # One listing per state (cheapest first if a state has more than one
+    # matching seller) so the picker shows states, not every individual seller.
+    by_state: dict = {}
+    async for d in db.products.find(query).sort([("price", 1)]):
+        st = (d.get("state") or "").strip() or "Other"
+        if st not in by_state:
+            by_state[st] = product_doc_to_out(d)
+    items = sorted(by_state.values(), key=lambda p: p.get("state") or "zzz")
+    return {"items": items}
 
 
 @api_router.post("/products")

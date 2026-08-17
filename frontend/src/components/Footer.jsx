@@ -1,9 +1,16 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import api from "@/lib/api";
 import { LOGO } from "@/lib/assets";
 import { Leaf } from "lucide-react";
 
 export default function Footer() {
+  const [categories, setCategories] = useState([]);
+
+  useEffect(() => {
+    api.get("/products/categories").then((r) => setCategories(r.data.categories || []));
+  }, []);
+
   return (
     <footer className="mt-20 bg-ink text-cream">
       <div className="max-w-screen-xl mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-4 gap-8">
@@ -27,9 +34,11 @@ export default function Footer() {
         <div>
           <div className="font-heading text-sm uppercase tracking-widest mb-3 text-cream/60">Shop</div>
           <ul className="space-y-2 text-sm">
-            <li><Link to="/products?category=Teas" className="hover:text-terracotta transition-colors">Teas</Link></li>
-            <li><Link to="/products?category=Spices" className="hover:text-terracotta transition-colors">Spices</Link></li>
-            <li><Link to="/products?category=Artisanal%20Goods" className="hover:text-terracotta transition-colors">Artisanal Goods</Link></li>
+            {categories.map((c) => (
+              <li key={c}>
+                <Link to={`/products?category=${encodeURIComponent(c)}`} className="hover:text-terracotta transition-colors">{c}</Link>
+              </li>
+            ))}
             <li><Link to="/products" className="hover:text-terracotta transition-colors">All products</Link></li>
           </ul>
         </div>

@@ -14,7 +14,11 @@ export const IMG_LOOSE_TEA = "https://customer-assets-rejwkqb3.emergentagent.net
 // Hero + lifestyle — high-resolution editorial imagery
 export const HERO_IMG = "https://images.pexels.com/photos/6956903/pexels-photo-6956903.jpeg?auto=compress&cs=tinysrgb&dpr=2&w=1600&h=2000&fit=crop&q=90";
 
-// Category tile lifestyle photography (use branded product photos as anchors)
-export const CAT_TEAS = IMG_BLUE_TEA;
-export const CAT_SPICES = IMG_CHILLI;
-export const CAT_ARTISAN = IMG_HONEY;
+// Category tile lifestyle photography (use branded product photos as anchors).
+// Keys match the canonical PRODUCT_CATEGORIES list on the backend.
+export const CAT_HERBAL_TEA = IMG_BLUE_TEA;
+export const CAT_GROCERY = IMG_CHILLI;
+export const CAT_ARTISANAL_GOODS = IMG_BEADS;
+export const CAT_SUPER_FOODS = IMG_HONEY;
+export const CAT_SPIRITUAL = IMG_LOOSE_TEA;
+export const CAT_MEDICINAL_ROOTS = IMG_ASHWAGANDHA;

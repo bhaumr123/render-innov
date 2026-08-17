@@ -4,13 +4,18 @@ import api from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
 import Testimonials from "@/components/Testimonials";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { CAT_TEAS, CAT_SPICES, CAT_ARTISAN, LOGO } from "@/lib/assets";
+import {
+  CAT_HERBAL_TEA, CAT_GROCERY, CAT_ARTISANAL_GOODS, CAT_SUPER_FOODS, CAT_SPIRITUAL, CAT_MEDICINAL_ROOTS, LOGO,
+} from "@/lib/assets";
 import { Leaf, Sprout, Package, MapPin } from "lucide-react";
 
 const CATEGORY_TILES = [
-  { name: "Teas", img: CAT_TEAS, blurb: "Small-batch, hand-picked, brewed for calm." },
-  { name: "Spices", img: CAT_SPICES, blurb: "Single-origin, stone-ground, table-ready." },
-  { name: "Artisanal Goods", img: CAT_ARTISAN, blurb: "Honey, oils, tonics · made the old way." },
+  { name: "Herbal Tea", img: CAT_HERBAL_TEA, blurb: "Small-batch, hand-picked, brewed for calm." },
+  { name: "Grocery", img: CAT_GROCERY, blurb: "Spice powders, cold-pressed oils, ghee & honey." },
+  { name: "Artisanal Goods", img: CAT_ARTISANAL_GOODS, blurb: "Handmade plates, jute bags & crafted goods." },
+  { name: "Super Foods", img: CAT_SUPER_FOODS, blurb: "Bee pollen & nutrient-dense wellness foods." },
+  { name: "Spiritual", img: CAT_SPIRITUAL, blurb: "Incense, dhoop & temple flowers." },
+  { name: "Medicinal Roots", img: CAT_MEDICINAL_ROOTS, blurb: "Roots & churna used in traditional wellness." },
 ];
 
 export default function Home() {
@@ -59,7 +64,7 @@ export default function Home() {
                 Shop the apothecary →
               </Link>
               <Link
-                to="/products?category=Teas"
+                to="/products?category=Herbal%20Tea"
                 data-testid="hero-tea-btn"
                 className="inline-flex items-center gap-2 border border-ink text-ink text-sm px-6 py-3 rounded-full hover:bg-ink hover:text-cream transition-colors"
               >
@@ -75,7 +80,7 @@ export default function Home() {
           <div className="relative">
             <div className="aspect-[4/5] bg-parchment rounded-xl overflow-hidden border border-warm">
               <img
-                src={CAT_ARTISAN}
+                src={CAT_ARTISANAL_GOODS}
                 alt="Artisanal goods"
                 className="w-full h-full object-cover"
               />
@@ -96,13 +101,13 @@ export default function Home() {
         <div className="flex items-end justify-between mb-6">
           <div>
             <div className="text-[11px] tracking-[0.3em] uppercase text-sage mb-1">The collection</div>
-            <h2 className="font-heading text-3xl md:text-4xl font-semibold">Three ways to nourish</h2>
+            <h2 className="font-heading text-3xl md:text-4xl font-semibold">Ways to nourish</h2>
           </div>
           <Link to="/products" className="text-sm text-ink hover:text-terracotta transition-colors border-b border-ink/30 hover:border-terracotta pb-0.5">
             Browse all →
           </Link>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
           {CATEGORY_TILES.map((c) => (
             <Link
               to={`/products?category=${encodeURIComponent(c.name)}`}

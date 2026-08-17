@@ -1,7 +1,9 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Leaf, Sprout, Package, Compass } from "lucide-react";
-import { LOGO, CAT_ARTISAN, CAT_TEAS, CAT_SPICES } from "@/lib/assets";
+import {
+  LOGO, CAT_HERBAL_TEA, CAT_GROCERY, CAT_ARTISANAL_GOODS, CAT_SUPER_FOODS, CAT_SPIRITUAL, CAT_MEDICINAL_ROOTS,
+} from "@/lib/assets";
 
 export default function About() {
   return (
@@ -54,11 +56,14 @@ export default function About() {
         </div>
       </section>
 
-      <section className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-5">
+      <section className="mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
         {[
-          { img: CAT_TEAS, name: "Teas", copy: "Butterfly pea, marigold petals, more." },
-          { img: CAT_SPICES, name: "Spices", copy: "Stone-ground, sun-dried, table-ready." },
-          { img: CAT_ARTISAN, name: "Artisanal Goods", copy: "Honey, oils, tonics, prayer beads." },
+          { img: CAT_HERBAL_TEA, name: "Herbal Tea", copy: "Butterfly pea, marigold petals, more." },
+          { img: CAT_GROCERY, name: "Grocery", copy: "Spice powders, cold-pressed oils, ghee & honey." },
+          { img: CAT_ARTISANAL_GOODS, name: "Artisanal Goods", copy: "Handmade plates, jute bags & crafted goods." },
+          { img: CAT_SUPER_FOODS, name: "Super Foods", copy: "Bee pollen & nutrient-dense wellness foods." },
+          { img: CAT_SPIRITUAL, name: "Spiritual", copy: "Incense, dhoop & temple flowers." },
+          { img: CAT_MEDICINAL_ROOTS, name: "Medicinal Roots", copy: "Roots & churna used in traditional wellness." },
         ].map((c) => (
           <Link
             key={c.name}

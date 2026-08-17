@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import api, { resolveUploadUrl } from "@/lib/api";
 import { toast } from "sonner";
-import { Leaf, Package, ShieldCheck, ChevronLeft, Star } from "lucide-react";
+import { Leaf, Package, ShieldCheck, ChevronLeft, Star, MapPin } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import Reviews from "@/components/Reviews";
@@ -14,6 +14,7 @@ export default function ProductDetail() {
   const [qty, setQty] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState("");
   const [activePhoto, setActivePhoto] = useState(0);
+  const [regionalOptions, setRegionalOptions] = useState([]);
   const { addToCart } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -25,6 +26,12 @@ export default function ProductDetail() {
       const variants = r.data.size_variants || [];
       if (variants.length > 0) setSelectedVariant(variants[0].label);
     }).catch(() => setP(false));
+    setRegionalOptions([]);
+    // Same product name, sold out of different states — offer state as a
+    // pickable option (e.g. two sellers both list "Honey", one from Kerala,
+    // one from Rajasthan) instead of only ever showing whichever one the
+    // buyer happened to land on.
+    api.get(`/products/${id}/regional-options`).then((r) => setRegionalOptions(r.data.items || [])).catch(() => setRegionalOptions([]));
   }, [id]);
 
   const photos = useMemo(() => {
@@ -109,6 +116,31 @@ export default function ProductDetail() {
           <p className="text-sm text-muted-warm leading-relaxed mt-5 max-w-md">
             {p.description}
           </p>
+
+          {regionalOptions.length > 1 && (
+            <div className="mt-6" data-testid="product-state-options">
+              <div className="text-xs uppercase tracking-widest text-muted-warm mb-2 flex items-center gap-1.5">
+                <MapPin size={13} className="text-sage" /> Available from
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {regionalOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    data-testid={`product-state-option-${opt.state}`}
+                    onClick={() => opt.id !== p.id && navigate(`/product/${opt.id}`)}
+                    className={`px-4 py-2 rounded-full text-sm border transition-colors ${
+                      opt.id === p.id
+                        ? "bg-ink text-cream border-ink"
+                        : "bg-surface border-warm text-ink hover:border-ink"
+                    }`}
+                  >
+                    {opt.state || "Other"} · ₹{Number(opt.price).toFixed(2)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {hasVariants && (
             <div className="mt-6">
