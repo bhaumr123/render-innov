@@ -17,6 +17,24 @@ import jwt
 import razorpay
 import requests
 import aiosmtplib
+
+# The cloudinary SDK reads CLOUDINARY_URL the instant it's imported (below)
+# and raises immediately if it isn't exactly "cloudinary://key:secret@cloud"
+# — which takes down the *entire* server before our own config guard further
+# down ever runs. Sanitize it up front so a bad paste in the Render
+# dashboard (stray "CLOUDINARY_URL=" prefix, quotes, whitespace) degrades to
+# "uploads fall back to local disk" instead of crashing the whole app.
+_cloudinary_url = os.environ.get("CLOUDINARY_URL", "").strip().strip("'\"")
+if _cloudinary_url and not _cloudinary_url.startswith("cloudinary://"):
+    logging.warning(
+        f"CLOUDINARY_URL is set but doesn't start with 'cloudinary://' (got: "
+        f"{_cloudinary_url[:20]}...) — ignoring it. Uploads will fall back to "
+        f"local disk until it's fixed in the Render dashboard."
+    )
+    os.environ.pop("CLOUDINARY_URL", None)
+elif _cloudinary_url:
+    os.environ["CLOUDINARY_URL"] = _cloudinary_url  # trim any accidental whitespace/quotes
+
 import cloudinary
 import cloudinary.uploader
 from email.message import EmailMessage
