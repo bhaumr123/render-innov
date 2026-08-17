@@ -520,11 +520,6 @@ export default function Admin() {
                         }`}>
                           {p.approval_status || "approved"}
                         </span>
-                        {p.approval_status === "pending" && p.approval_code && (
-                          <div className="text-[10px] font-mono text-muted-warm mt-1" data-testid={`admin-approval-code-${p.id}`} title="Reply APPROVE/REJECT this code over WhatsApp">
-                            {p.approval_code}
-                          </div>
-                        )}
                       </td>
                       <td className="text-right whitespace-nowrap">
                         {p.approval_status === "pending" && (

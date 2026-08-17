@@ -48,7 +48,7 @@ services:
       - key: TWILIO_WHATSAPP_FROM         # e.g. "whatsapp:+14155238886" (Twilio's sandbox number while testing)
         sync: false
       - key: ADMIN_WHATSAPP_NUMBERS       # comma-separated E.164 numbers, e.g. "+919876543210,+919812345678"
-        sync: false                       # notified on new seller signups + pending products; only these can APPROVE/REJECT by reply
+        sync: false                       # notified on new seller signups + pending products; approval stays in the dashboard
 
       # ---- App config ----
       - key: FRONTEND_URL
