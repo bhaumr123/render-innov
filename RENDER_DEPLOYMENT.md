@@ -39,7 +39,7 @@ For `iwi-backend`, Render will prompt for the env vars marked `sync: false`:
 |---|---|
 | `MONGO_URL` | Your Atlas SRV URI. Whitelist `0.0.0.0/0` in Atlas Network Access so Render can connect. |
 | `ADMIN_PASSWORD` | Any strong password — change after first login via **Admin → Profile**. |
-| `RAZORPAY_KEY_ID` | From Razorpay Dashboard → Settings → API Keys |
+| `RAZORPAY_KEY_ID` | From Razorpay Dashboard → Settings → API Keys. **Optional right now** — Razorpay is disabled by default (`RAZORPAY_ENABLED=false` in `render.yaml`); sellers get paid via their own UPI QR code at checkout instead. Skip Razorpay setup entirely unless you want to bring the gateway back. |
 | `RAZORPAY_KEY_SECRET` | Same page |
 | `RAZORPAY_WEBHOOK_SECRET` | From Razorpay Dashboard → Webhooks (create after deploy) |
 | `CLOUDINARY_URL` | The value you copied in Prerequisites step 3. Recommended — without it, seller uploads still work but don't survive a redeploy. |
@@ -76,7 +76,9 @@ To confirm the seller flow: go to **Register**, toggle **I'm a seller**, create 
    - Type: `ALIAS`/`ANAME` (or `A` if your registrar doesn't support ALIAS) · Name: `@` · Value: (target Render shows / Render's IPs)
 3. Wait 5-30 min for propagation. Render auto-issues an SSL cert.
 
-## Step 7 — Configure the Razorpay webhook
+## Step 7 — Configure the Razorpay webhook (optional — Razorpay is off by default)
+
+Skip this step unless you've deliberately re-enabled Razorpay (`RAZORPAY_ENABLED=true` on `iwi-backend`, plus real keys). While disabled, `/api/webhooks/razorpay` always returns 503.
 
 Razorpay Dashboard → **Settings → Webhooks → Add**:
 
