@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import re
 import logging
 import uuid
 import asyncio
@@ -120,6 +121,11 @@ INDIA_STATES = [
 ]
 
 
+# ---------- GST ----------
+GST_RATES = (5, 18)
+GSTIN_REGEX = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
+
+
 # ---------- Sequential vendor/customer codes ----------
 async def _next_code(prefix: str, counter_name: str, width: int = 5) -> str:
     """Atomically increments a named counter and returns e.g. 'VEN-00001'.
@@ -145,6 +151,7 @@ class RegisterInput(BaseModel):
     role: str = "customer"
     state: str = ""  # required for sellers — where they ship from
     city: str = ""
+    gst_number: str = ""  # GSTIN — mandatory for sellers, optional for buyers
 
     @field_validator("role")
     @classmethod
@@ -154,13 +161,22 @@ class RegisterInput(BaseModel):
             return "customer"
         return v
 
+    @field_validator("gst_number")
+    @classmethod
+    def normalize_gst_number(cls, v: str) -> str:
+        return v.strip().upper()
+
     @model_validator(mode="after")
-    def _require_seller_location(self):
+    def _require_seller_location_and_gst(self):
         if self.role == "seller":
             if not self.city.strip():
                 raise ValueError("City is required for a seller account")
             if self.state not in INDIA_STATES:
                 raise ValueError("A valid Indian state is required for a seller account")
+            if not self.gst_number:
+                raise ValueError("GST number is required for a seller account")
+        if self.gst_number and not GSTIN_REGEX.match(self.gst_number):
+            raise ValueError("GST number must be a valid 15-character GSTIN (e.g. 27AAAAA0000A1Z5)")
         return self
 
 
@@ -177,6 +193,7 @@ class UserOut(BaseModel):
     code: str = ""
     state: str = ""
     city: str = ""
+    gst_number: str = ""
 
 
 class ProductIn(BaseModel):
@@ -201,11 +218,17 @@ class ProductIn(BaseModel):
     # labels packaging sizes: liquids in "ml", solids by weight in "g", and
     # anything else (e.g. beads, sachets) as a plain "count" of pieces.
     unit_type: str = "count"
+    gst_rate: float = 5  # GST % applied at checkout — every product is either 5% or 18%
 
     @field_validator("unit_type")
     @classmethod
     def validate_unit_type(cls, v: str) -> str:
         return v if v in ("ml", "g", "count") else "count"
+
+    @field_validator("gst_rate")
+    @classmethod
+    def validate_gst_rate(cls, v: float) -> float:
+        return v if v in GST_RATES else 5
 
 
 class ProductOut(ProductIn):
@@ -305,6 +328,7 @@ def product_doc_to_out(doc: dict) -> dict:
         "brand": doc.get("brand", "IWI"),
         "size_variants": doc.get("size_variants", []),
         "unit_type": doc.get("unit_type") or "count",
+        "gst_rate": float(doc.get("gst_rate") or 5),
         "created_at": doc.get("created_at", datetime.now(timezone.utc).isoformat()),
     }
 
@@ -330,6 +354,7 @@ async def register(payload: RegisterInput, response: Response):
         "code": code,
         "state": payload.state if role == "seller" else "",
         "city": payload.city.strip() if role == "seller" else "",
+        "gst_number": payload.gst_number,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.users.insert_one(doc)
@@ -337,7 +362,10 @@ async def register(payload: RegisterInput, response: Response):
     access = create_access_token(uid, email, role)
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
-    return {"id": uid, "email": email, "name": payload.name, "role": role, "code": code, "state": doc["state"], "city": doc["city"]}
+    return {
+        "id": uid, "email": email, "name": payload.name, "role": role, "code": code,
+        "state": doc["state"], "city": doc["city"], "gst_number": doc["gst_number"],
+    }
 
 
 async def _ensure_user_code(uid: str, role: str, existing_code: str) -> str:
@@ -366,6 +394,7 @@ async def login(payload: LoginInput, response: Response):
     return {
         "id": uid, "email": email, "name": user.get("name", ""), "role": role,
         "code": code, "state": user.get("state", ""), "city": user.get("city", ""),
+        "gst_number": user.get("gst_number", ""),
     }
 
 
@@ -382,6 +411,7 @@ async def me(user: dict = Depends(get_current_user)):
     return {
         "id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"],
         "code": code, "state": user.get("state", ""), "city": user.get("city", ""),
+        "gst_number": user.get("gst_number", ""),
     }
 
 
@@ -773,6 +803,17 @@ def _shipping_for(subtotal: float) -> float:
     return 0.0 if subtotal >= threshold else flat
 
 
+def _compute_gst(items: List[dict]) -> float:
+    """Sum each line item's own GST (5% or 18%, set per product by the
+    seller) rather than one flat rate across the whole cart — items carry
+    their gst_rate at checkout time so this stays accurate even if a
+    product's rate changes later."""
+    return round(sum(
+        float(it.get("price", 0)) * int(it.get("quantity", 0)) * (float(it.get("gst_rate") or 5) / 100.0)
+        for it in items
+    ), 2)
+
+
 @api_router.get("/config/shipping")
 async def get_shipping_config():
     return {
@@ -1066,9 +1107,7 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
     if not items:
         raise HTTPException(status_code=400, detail="Cart is empty")
     subtotal = sum((i["unit_price"] * i["quantity"]) for i in items if i["product"])
-    tax = round(subtotal * 0.05, 2)
     shipping = _shipping_for(subtotal)
-    total = round(subtotal + tax + shipping, 2)
 
     order_items = [{
         "product_id": i["product_id"],
@@ -1078,7 +1117,11 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
         "variant_label": i.get("variant_label", ""),
         "image_url": i["product"]["image_url"] if i["product"] else "",
         "seller_id": i["product"].get("seller_id") if i["product"] else None,
+        "gst_rate": i["product"].get("gst_rate", 5) if i["product"] else 5,
     } for i in items]
+
+    tax = _compute_gst(order_items)
+    total = round(subtotal + tax + shipping, 2)
 
     order = {
         "user_id": user["id"],
@@ -1311,10 +1354,7 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
         discount = float(val["discount"])
         coupon_applied = val["code"]
     discounted_subtotal = max(0.0, round(subtotal - discount, 2))
-    tax = round(discounted_subtotal * 0.05, 2)
     shipping = _shipping_for(discounted_subtotal)
-    total = round(discounted_subtotal + tax + shipping, 2)
-    amount_paise = int(round(total * 100))
 
     # Persist internal pending order first so we can bind to razorpay_order_id
     razorpay_items = [{
@@ -1325,7 +1365,12 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
         "variant_label": i.get("variant_label", ""),
         "image_url": i["product"]["image_url"] if i["product"] else "",
         "seller_id": i["product"].get("seller_id") if i["product"] else None,
+        "gst_rate": i["product"].get("gst_rate", 5) if i["product"] else 5,
     } for i in items]
+
+    tax = _compute_gst(razorpay_items)
+    total = round(discounted_subtotal + tax + shipping, 2)
+    amount_paise = int(round(total * 100))
 
     order = {
         "user_id": user["id"],
@@ -1487,6 +1532,7 @@ async def _price_guest_items(items: List[GuestCartItem]) -> List[dict]:
             "variant_label": it.variant_label or "",
             "image_url": prod.get("image_url", ""),
             "seller_id": prod.get("seller_id"),
+            "gst_rate": prod.get("gst_rate", 5),
         })
     return priced
 
@@ -1539,7 +1585,7 @@ async def guest_checkout(payload: GuestCheckoutInput):
         order["coupon_code"] = val["code"]
     order["discount"] = discount
     discounted = max(0.0, round(subtotal - discount, 2))
-    order["tax"] = round(discounted * 0.05, 2)
+    order["tax"] = _compute_gst(priced)
     order["shipping"] = _shipping_for(discounted)
     order["total"] = round(discounted + order["tax"] + order["shipping"], 2)
     order["payment_method"] = payload.payment_method
@@ -1582,7 +1628,7 @@ async def guest_create_razorpay(payload: GuestCheckoutInput):
         order["coupon_code"] = val["code"]
     order["discount"] = discount
     discounted = max(0.0, round(subtotal - discount, 2))
-    order["tax"] = round(discounted * 0.05, 2)
+    order["tax"] = _compute_gst(priced)
     order["shipping"] = _shipping_for(discounted)
     order["total"] = round(discounted + order["tax"] + order["shipping"], 2)
     order["payment_method"] = "razorpay"

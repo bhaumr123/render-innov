@@ -20,7 +20,7 @@ const CATEGORIES = ["Teas", "Spices", "Artisanal Goods"];
 const emptyForm = {
   title: "", description: "", price: "", category: "Teas",
   stock: 100, image_url: "", brand: "IWI", rating: 4.9, reviews_count: 0,
-  size_variants: [],
+  size_variants: [], gst_rate: "5",
 };
 
 export default function Admin() {
@@ -76,6 +76,7 @@ export default function Admin() {
       ...form,
       price: parseFloat(form.price),
       stock: parseInt(form.stock),
+      gst_rate: parseFloat(form.gst_rate || 5),
       rating: parseFloat(form.rating || 4.9),
       reviews_count: parseInt(form.reviews_count || 0),
       size_variants: form.size_variants.map((v) => ({
@@ -106,7 +107,7 @@ export default function Admin() {
       title: p.title, description: p.description || "", price: p.price,
       category: p.category, stock: p.stock, image_url: p.image_url || "",
       brand: p.brand || "IWI", rating: p.rating || 4.9, reviews_count: p.reviews_count || 0,
-      size_variants: p.size_variants || [],
+      size_variants: p.size_variants || [], gst_rate: String(p.gst_rate || 5),
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -292,6 +293,16 @@ export default function Admin() {
                 <Label>Base stock</Label>
                 <Input data-testid="admin-stock" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
               </div>
+            </div>
+            <div>
+              <Label>GST rate</Label>
+              <Select value={form.gst_rate} onValueChange={(v) => setForm({ ...form, gst_rate: v })}>
+                <SelectTrigger data-testid="admin-gst-rate"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5%</SelectItem>
+                  <SelectItem value="18">18%</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Image URL</Label>

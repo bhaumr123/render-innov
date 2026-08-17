@@ -25,7 +25,7 @@ def _register_seller(state="Rajasthan", city="Jaipur", **overrides):
     payload = {
         "email": f"TEST_locseller_{uuid.uuid4().hex[:8]}@shop.com",
         "password": "SellerPass123", "name": "Loc Seller", "role": "seller",
-        "state": state, "city": city,
+        "state": state, "city": city, "gst_number": "27AAAAA0000A1Z5",
     }
     payload.update(overrides)
     s = requests.Session()

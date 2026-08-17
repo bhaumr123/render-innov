@@ -43,6 +43,7 @@ export default function SellerDashboard() {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [unitType, setUnitType] = useState("count");
+  const [gstRate, setGstRate] = useState("5");
   const [sizeRows, setSizeRows] = useState([emptySizeRow()]);
   const [imagePreview, setImagePreview] = useState("");
   const [image2Preview, setImage2Preview] = useState("");
@@ -139,10 +140,12 @@ export default function SellerDashboard() {
         unit_type: unitType,
         size_variants: sizeVariants,
         price: sizeVariants[0].price,
+        gst_rate: parseFloat(gstRate),
       });
       toast.success("Product submitted for admin approval");
       setForm(emptyForm);
       setUnitType("count");
+      setGstRate("5");
       setSizeRows([emptySizeRow()]);
       setImagePreview("");
       setImage2Preview("");
@@ -183,6 +186,11 @@ export default function SellerDashboard() {
           {(user?.city || user?.state) && (
             <span className="text-muted-warm" data-testid="seller-location">
               {[user.city, user.state].filter(Boolean).join(", ")}
+            </span>
+          )}
+          {user?.gst_number && (
+            <span className="font-mono text-muted-warm" data-testid="seller-gst-number">
+              GSTIN: {user.gst_number}
             </span>
           )}
         </div>
@@ -229,6 +237,18 @@ export default function SellerDashboard() {
               {unitType === "g" && "e.g. a 100 g pouch of spice powder"}
               {unitType === "count" && "e.g. a pack of 10 beads or sachets"}
             </div>
+          </div>
+
+          <div>
+            <Label>GST rate</Label>
+            <Select value={gstRate} onValueChange={setGstRate}>
+              <SelectTrigger data-testid="seller-gst-rate"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5%</SelectItem>
+                <SelectItem value="18">18%</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="text-[10px] text-muted-warm mt-1">Applied to this product's price at checkout.</div>
           </div>
 
           <div className="border-t border-warm pt-3">
@@ -395,6 +415,7 @@ export default function SellerDashboard() {
                       {p.size_variants.map((v) => `${v.label} · ₹${Number(v.price).toFixed(2)}`).join(" · ")}
                     </div>
                   )}
+                  <div className="text-[11px] text-muted-warm mt-0.5">GST {p.gst_rate}%</div>
                   {p.qr_code_url ? (
                     <div className="flex items-center gap-1.5 text-[11px] text-sage mt-1">
                       <QrCode size={12} /> QR code attached

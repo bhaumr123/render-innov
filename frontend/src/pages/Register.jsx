@@ -16,12 +16,13 @@ export default function Register() {
   const [role, setRole] = useState(searchParams.get("role") === "seller" ? "seller" : "customer");
   const [state, setState] = useState("");
   const [city, setCity] = useState("");
+  const [gstNumber, setGstNumber] = useState("");
   const navigate = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    const ok = await register(email, password, name, role, state, city);
+    const ok = await register(email, password, name, role, state, city, gstNumber);
     if (ok) navigate(role === "seller" ? "/seller/dashboard" : "/", { replace: true });
   };
 
@@ -84,6 +85,24 @@ export default function Register() {
               </div>
             </div>
           )}
+
+          <div>
+            <Label htmlFor="gst-number">
+              GST number {role === "seller" ? "" : <span className="text-muted-warm normal-case">(optional)</span>}
+            </Label>
+            <Input
+              id="gst-number"
+              data-testid="reg-gst"
+              value={gstNumber}
+              onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
+              placeholder="e.g. 27AAAAA0000A1Z5"
+              maxLength={15}
+              required={role === "seller"}
+            />
+            <div className="text-[10px] text-muted-warm mt-1">
+              {role === "seller" ? "Required for sellers — your 15-character GSTIN." : "Add your GSTIN if you'd like it on invoices."}
+            </div>
+          </div>
 
           <div>
             <Label htmlFor="password">Password</Label>

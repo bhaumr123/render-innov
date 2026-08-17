@@ -33,7 +33,9 @@ export default function Checkout() {
   const discount = couponApplied?.discount || 0;
   const discountedSubtotal = Math.max(0, +(cart.subtotal - discount).toFixed(2));
   const shipping = discountedSubtotal === 0 ? 0 : (discountedSubtotal >= shippingCfg.free_threshold ? 0 : shippingCfg.flat_fee);
-  const tax = +(discountedSubtotal * 0.05).toFixed(2);
+  // Each product carries its own GST rate (5% or 18%) set by its seller —
+  // sum per line item rather than applying one flat rate to the cart.
+  const tax = +cart.items.reduce((sum, it) => sum + it.unit_price * it.quantity * ((it.product?.gst_rate ?? 5) / 100), 0).toFixed(2);
   const total = +(discountedSubtotal + tax + shipping).toFixed(2);
 
   // Distinct sellers in the cart that have uploaded a payment QR code.
@@ -352,7 +354,7 @@ export default function Checkout() {
           <div className="text-[11px] text-muted-warm">
             Flat ₹{shippingCfg.flat_fee.toFixed(2)} shipping · Free above ₹{shippingCfg.free_threshold.toFixed(0)}
           </div>
-          <div className="flex justify-between"><span className="text-muted-warm">Tax (5%)</span><span>₹{tax.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-warm">GST</span><span data-testid="chk-tax">₹{tax.toFixed(2)}</span></div>
           <div className="flex justify-between font-heading text-xl font-semibold text-ink border-t border-warm pt-3 mt-2">
             <span>Total</span><span data-testid="chk-total">₹{total.toFixed(2)}</span>
           </div>

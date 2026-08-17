@@ -14,7 +14,9 @@ export default function Cart() {
   }, []);
 
   const shipping = cart.subtotal === 0 ? 0 : (cart.subtotal >= shippingCfg.free_threshold ? 0 : shippingCfg.flat_fee);
-  const tax = +(cart.subtotal * 0.05).toFixed(2);
+  // Each product carries its own GST rate (5% or 18%) set by its seller —
+  // sum per line item rather than applying one flat rate to the cart.
+  const tax = +cart.items.reduce((sum, it) => sum + it.unit_price * it.quantity * ((it.product?.gst_rate ?? 5) / 100), 0).toFixed(2);
   const total = +(cart.subtotal + tax + shipping).toFixed(2);
   const remaining = Math.max(0, shippingCfg.free_threshold - cart.subtotal);
 
@@ -120,7 +122,7 @@ export default function Cart() {
         <div className="text-sm space-y-2">
           <div className="flex justify-between"><span className="text-muted-warm">Subtotal</span><span data-testid="cart-subtotal">₹{cart.subtotal.toFixed(2)}</span></div>
           <div className="flex justify-between"><span className="text-muted-warm">Shipping</span><span>{shipping === 0 && cart.subtotal > 0 ? <span className="text-sage">Free</span> : `₹${shipping.toFixed(2)}`}</span></div>
-          <div className="flex justify-between"><span className="text-muted-warm">Tax (5%)</span><span>₹{tax.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-warm">GST</span><span>₹{tax.toFixed(2)}</span></div>
           <div className="flex justify-between font-heading text-lg font-semibold border-t border-warm pt-3 mt-3">
             <span>Total</span><span data-testid="cart-total">₹{total.toFixed(2)}</span>
           </div>
