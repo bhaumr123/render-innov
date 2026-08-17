@@ -62,6 +62,7 @@ This produces `frontend/build/`. Everything inside that folder is what you will 
    - Generate a fresh `JWT_SECRET` (`python -c "import secrets; print(secrets.token_hex(32))"`)
    - Set `CORS_ORIGINS="https://innovationwindowindia.com,https://www.innovationwindowindia.com"`
    - Paste your Razorpay LIVE keys and `RAZORPAY_WEBHOOK_SECRET`
+   - Optionally set `CLOUDINARY_URL` (from cloudinary.com dashboard) so seller product picture / QR code uploads go to Cloudinary instead of local disk
 
 ---
 

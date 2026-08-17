@@ -14,12 +14,15 @@ import secrets
 import jwt
 import razorpay
 import aiosmtplib
+import cloudinary
+import cloudinary.uploader
 from email.message import EmailMessage
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Annotated
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from pydantic import BaseModel, Field, EmailStr, ConfigDict, BeforeValidator, field_validator
@@ -395,8 +398,19 @@ async def reset_password(payload: ResetPasswordInput):
 
 
 # ---------- Uploads ----------
+# Product pictures & seller QR codes go to Cloudinary (durable, CDN-backed)
+# when configured. Without a CLOUDINARY_URL, uploads fall back to local disk
+# — handy for local dev, but NOT durable in production (files are lost on
+# every redeploy on hosts like Render that don't persist the filesystem).
 UPLOAD_DIR = ROOT_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")
+CLOUDINARY_ENABLED = bool(CLOUDINARY_URL)
+if CLOUDINARY_ENABLED:
+    cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
+else:
+    logger.warning("CLOUDINARY_URL not set — uploads will be saved to local disk (non-durable).")
 
 ALLOWED_UPLOAD_TYPES = {
     "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
@@ -412,6 +426,20 @@ async def upload_image(file: UploadFile = File(...), _: dict = Depends(get_curre
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail="File too large (max 5MB)")
+
+    if CLOUDINARY_ENABLED:
+        try:
+            result = await run_in_threadpool(
+                cloudinary.uploader.upload,
+                data,
+                folder="iwi-uploads",
+                resource_type="image",
+            )
+        except Exception:
+            logger.exception("Cloudinary upload failed")
+            raise HTTPException(status_code=502, detail="Image upload failed, please try again")
+        return {"url": result["secure_url"]}
+
     filename = f"{uuid.uuid4().hex}{ext}"
     (UPLOAD_DIR / filename).write_bytes(data)
     return {"url": f"/uploads/{filename}"}

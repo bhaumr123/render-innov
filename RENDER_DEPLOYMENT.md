@@ -41,6 +41,7 @@ For `iwi-backend`, Render will prompt for the env vars marked `sync: false`:
 | `RAZORPAY_KEY_ID` | From Razorpay Dashboard → Settings → API Keys |
 | `RAZORPAY_KEY_SECRET` | Same page |
 | `RAZORPAY_WEBHOOK_SECRET` | From Razorpay Dashboard → Webhooks (create after deploy) |
+| `CLOUDINARY_URL` | From [cloudinary.com](https://cloudinary.com) dashboard → "API Environment variable" (looks like `cloudinary://<key>:<secret>@<cloud_name>`). Powers seller product picture / QR code uploads. If left unset, uploads fall back to local disk, which Render does **not** persist across deploys on the free plan. |
 
 `JWT_SECRET` auto-generates on first deploy — no action needed.
 

@@ -16,3 +16,4 @@ python-multipart==0.0.32
 requests==2.34.2
 typing_extensions==4.16.0
 aiosmtplib==3.0.2
+cloudinary==1.45.0

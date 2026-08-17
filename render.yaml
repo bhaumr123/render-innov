@@ -37,6 +37,8 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
+      - key: CLOUDINARY_URL              # cloudinary.com dashboard → "API Environment variable"
+        sync: false
 
       # ---- App config ----
       - key: FRONTEND_URL
