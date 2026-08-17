@@ -8,6 +8,14 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Uploaded files (product pictures, QR codes) are returned as a relative
+// "/uploads/.." path when Cloudinary isn't configured; resolve those against
+// the API's own origin so <img> tags load correctly. Cloudinary URLs are
+// already absolute and pass through unchanged.
+export function resolveUploadUrl(path) {
+  return path && path.startsWith("/") ? `${BACKEND_URL}${path}` : path;
+}
+
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "Something went wrong. Please try again.";
   if (typeof detail === "string") return detail;

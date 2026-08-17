@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
-import api, { formatApiErrorDetail } from "@/lib/api";
+import api, { formatApiErrorDetail, resolveUploadUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -279,7 +279,7 @@ export default function Checkout() {
               const key = `${it.product_id}::${it.variant_label || ""}`;
               return (
                 <li key={key} className="py-3 flex items-center gap-3">
-                  <img src={it.product?.image_url} className="w-14 h-14 object-contain" alt="" />
+                  <img src={resolveUploadUrl(it.product?.image_url)} className="w-14 h-14 object-contain" alt="" />
                   <div className="flex-1 text-sm">
                     <div className="line-clamp-1 font-medium">{it.product?.title}</div>
                     <div className="text-xs text-muted-warm">

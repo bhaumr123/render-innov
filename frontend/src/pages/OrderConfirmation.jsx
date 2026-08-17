@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
-import api from "@/lib/api";
+import api, { resolveUploadUrl } from "@/lib/api";
 import { CheckCircle2, Package } from "lucide-react";
 import OrderTimeline from "@/components/OrderTimeline";
 
@@ -93,7 +93,7 @@ export default function OrderConfirmation() {
           <ul className="divide-y divide-warm">
             {order.items.map((it, i) => (
               <li key={i} className="py-3 flex items-center gap-3">
-                <img src={it.image_url} className="w-14 h-14 object-contain" alt="" />
+                <img src={resolveUploadUrl(it.image_url)} className="w-14 h-14 object-contain" alt="" />
                 <div className="flex-1 text-sm">
                   <div className="font-medium">{it.title}</div>
                   <div className="text-xs text-muted-warm">

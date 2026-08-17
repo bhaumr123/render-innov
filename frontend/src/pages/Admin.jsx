@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import api from "@/lib/api";
+import api, { resolveUploadUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -107,6 +107,16 @@ export default function Admin() {
     await api.delete(`/products/${id}`);
     toast.success("Deleted");
     loadProducts();
+  };
+
+  const setApproval = async (id, approval_status) => {
+    try {
+      await api.patch(`/products/${id}/approval`, { approval_status });
+      toast.success(approval_status === "approved" ? "Product approved · now live" : "Product rejected");
+      loadProducts();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update approval status");
+    }
   };
 
   const addVariantRow = () => setForm({ ...form, size_variants: [...form.size_variants, { label: "", price: "", stock: 100 }] });
@@ -322,6 +332,7 @@ export default function Admin() {
                     <th>Category</th>
                     <th>Base ₹</th>
                     <th>Variants</th>
+                    <th>Status</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -329,20 +340,36 @@ export default function Admin() {
                   {products.map((p) => (
                     <tr key={p.id} className="border-b border-warm/60">
                       <td className="py-3 flex items-center gap-2">
-                        <img src={p.image_url} className="w-10 h-10 object-contain bg-parchment/40 rounded" alt="" />
+                        <img src={resolveUploadUrl(p.image_url)} className="w-10 h-10 object-contain bg-parchment/40 rounded" alt="" />
                         <span className="line-clamp-1">{p.title}</span>
+                        {p.seller_id && <span className="text-[9px] uppercase tracking-widest text-muted-warm border border-warm rounded-full px-1.5 py-0.5 shrink-0">Seller</span>}
                       </td>
                       <td className="text-xs">{p.category}</td>
                       <td>₹{p.price.toFixed(2)}</td>
                       <td className="text-xs">{p.size_variants?.length || 0}</td>
+                      <td>
+                        <span className={`inline-block text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border ${
+                          p.approval_status === "pending" ? "bg-amber-100 text-amber-700 border-amber-200"
+                          : p.approval_status === "rejected" ? "bg-red-100 text-red-700 border-red-200"
+                          : "bg-sage/15 text-sage border-sage/30"
+                        }`}>
+                          {p.approval_status || "approved"}
+                        </span>
+                      </td>
                       <td className="text-right whitespace-nowrap">
+                        {p.approval_status === "pending" && (
+                          <>
+                            <button data-testid={`admin-approve-${p.id}`} onClick={() => setApproval(p.id, "approved")} className="text-sage hover:text-ink mr-3">Approve</button>
+                            <button data-testid={`admin-reject-${p.id}`} onClick={() => setApproval(p.id, "rejected")} className="text-terracotta hover:text-ink mr-3">Reject</button>
+                          </>
+                        )}
                         <button data-testid={`admin-edit-${p.id}`} onClick={() => edit(p)} className="text-ink hover:text-terracotta mr-3 inline-flex items-center gap-1"><Pencil size={12} /> Edit</button>
                         <button data-testid={`admin-del-${p.id}`} onClick={() => remove(p.id)} className="text-terracotta hover:text-ink inline-flex items-center gap-1"><Trash2 size={12} /> Delete</button>
                       </td>
                     </tr>
                   ))}
                   {products.length === 0 && (
-                    <tr><td colSpan={5} className="py-8 text-center text-muted-warm">No products yet — try "Seed 8 demo products" above.</td></tr>
+                    <tr><td colSpan={6} className="py-8 text-center text-muted-warm">No products yet — try "Seed 8 demo products" above.</td></tr>
                   )}
                 </tbody>
               </table>

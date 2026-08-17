@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import api from "@/lib/api";
+import api, { resolveUploadUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { Leaf, Package, ShieldCheck, ChevronLeft, Star } from "lucide-react";
 import { useCart } from "@/context/CartContext";
@@ -13,6 +13,7 @@ export default function ProductDetail() {
   const [p, setP] = useState(null);
   const [qty, setQty] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState("");
+  const [activePhoto, setActivePhoto] = useState(0);
   const { addToCart } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -20,10 +21,16 @@ export default function ProductDetail() {
   useEffect(() => {
     api.get(`/products/${id}`).then((r) => {
       setP(r.data);
+      setActivePhoto(0);
       const variants = r.data.size_variants || [];
       if (variants.length > 0) setSelectedVariant(variants[0].label);
     }).catch(() => setP(false));
   }, [id]);
+
+  const photos = useMemo(() => {
+    if (!p) return [];
+    return [p.image_url, ...(p.images || [])].filter(Boolean);
+  }, [p]);
 
   const variantPrice = useMemo(() => {
     if (!p) return 0;
@@ -64,8 +71,27 @@ export default function ProductDetail() {
       </Link>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-        <div className="bg-surface border border-warm rounded-lg p-6 flex items-center justify-center aspect-square">
-          <img src={p.image_url} alt={p.title} className="max-w-full max-h-full object-contain" />
+        <div>
+          <div className="bg-surface border border-warm rounded-lg p-6 flex items-center justify-center aspect-square">
+            <img src={resolveUploadUrl(photos[activePhoto] || p.image_url)} alt={p.title} className="max-w-full max-h-full object-contain" />
+          </div>
+          {photos.length > 1 && (
+            <div className="flex gap-2 mt-3" data-testid="product-photo-thumbs">
+              {photos.map((photo, i) => (
+                <button
+                  key={photo + i}
+                  type="button"
+                  onClick={() => setActivePhoto(i)}
+                  data-testid={`product-photo-thumb-${i}`}
+                  className={`w-16 h-16 rounded-md border p-1 bg-surface transition-colors ${
+                    activePhoto === i ? "border-ink" : "border-warm hover:border-ink/50"
+                  }`}
+                >
+                  <img src={resolveUploadUrl(photo)} alt={`${p.title} view ${i + 1}`} className="w-full h-full object-contain" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

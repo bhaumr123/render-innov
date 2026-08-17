@@ -202,6 +202,16 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+async def get_current_user_optional(request: Request) -> Optional[dict]:
+    """Like get_current_user, but returns None instead of raising when there's
+    no/invalid session — for endpoints that are public but behave differently
+    for a logged-in admin/seller (e.g. product visibility by approval status)."""
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        return None
+
+
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin required")
@@ -226,6 +236,11 @@ def product_doc_to_out(doc: dict) -> dict:
         "images": doc.get("images", []),
         "qr_code_url": doc.get("qr_code_url", ""),
         "seller_id": doc.get("seller_id"),
+        # Seller-submitted products start "pending" and stay off the public
+        # storefront until an admin approves them. Products with no stored
+        # value (admin-created, or created before this field existed) are
+        # treated as already approved.
+        "approval_status": doc.get("approval_status") or "approved",
         "rating": float(doc.get("rating", 4.9)),
         "reviews_count": int(doc.get("reviews_count", 0)),
         "brand": doc.get("brand", "IWI"),
@@ -463,14 +478,16 @@ async def list_products(
     sort: Optional[str] = None,
     limit: int = Query(60, le=200),
     skip: int = 0,
+    user: Optional[dict] = Depends(get_current_user_optional),
 ):
     query: dict = {}
+    conditions: List[dict] = []
     if q:
-        query["$or"] = [
+        conditions.append({"$or": [
             {"title": {"$regex": q, "$options": "i"}},
             {"description": {"$regex": q, "$options": "i"}},
             {"brand": {"$regex": q, "$options": "i"}},
-        ]
+        ]})
     if category and category.lower() != "all":
         query["category"] = category
     if min_price is not None or max_price is not None:
@@ -480,6 +497,17 @@ async def list_products(
         if max_price is not None:
             pr["$lte"] = max_price
         query["price"] = pr
+
+    # Pending/rejected seller submissions stay off the public storefront —
+    # admins see everything (for the review queue). Products with no stored
+    # approval_status (admin-created, or pre-dating this field) stay visible.
+    if not (user and user.get("role") == "admin"):
+        conditions.append({"$or": [
+            {"approval_status": "approved"},
+            {"approval_status": {"$exists": False}},
+        ]})
+    if conditions:
+        query["$and"] = conditions
 
     sort_opt = [("created_at", -1)]
     if sort == "price_asc":
@@ -502,12 +530,19 @@ async def list_categories():
 
 
 @api_router.get("/products/{product_id}")
-async def get_product(product_id: str):
+async def get_product(product_id: str, user: Optional[dict] = Depends(get_current_user_optional)):
     try:
         doc = await db.products.find_one({"_id": ObjectId(product_id)})
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid product id")
     if not doc:
+        raise HTTPException(status_code=404, detail="Product not found")
+    approval_status = doc.get("approval_status") or "approved"
+    is_admin = bool(user) and user.get("role") == "admin"
+    is_owning_seller = bool(user) and doc.get("seller_id") == user.get("id")
+    if approval_status != "approved" and not (is_admin or is_owning_seller):
+        # Hide pending/rejected listings from everyone except the admin and
+        # the seller who submitted them — same as a 404 for a nonexistent product.
         raise HTTPException(status_code=404, detail="Product not found")
     return product_doc_to_out(doc)
 
@@ -517,8 +552,12 @@ async def create_product(payload: ProductIn, user: dict = Depends(require_seller
     doc = payload.model_dump()
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     # Sellers can only ever own the products they create; admins may set seller_id explicitly.
+    # Seller submissions start pending review; admin-created products are auto-approved.
     if user.get("role") == "seller":
         doc["seller_id"] = user["id"]
+        doc["approval_status"] = "pending"
+    else:
+        doc["approval_status"] = "approved"
     res = await db.products.insert_one(doc)
     doc["_id"] = res.inserted_id
     return product_doc_to_out(doc)
@@ -543,6 +582,33 @@ async def list_seller_products(user: dict = Depends(require_seller)):
     cursor = db.products.find(query).sort([("created_at", -1)])
     items = [product_doc_to_out(d) async for d in cursor]
     return {"items": items, "total": len(items)}
+
+
+class ProductApprovalInput(BaseModel):
+    approval_status: str  # "approved" | "rejected" | "pending"
+
+
+@api_router.get("/admin/products/pending")
+async def list_pending_products(_: dict = Depends(require_admin)):
+    cursor = db.products.find({"approval_status": "pending"}).sort([("created_at", -1)])
+    items = [product_doc_to_out(d) async for d in cursor]
+    return {"items": items, "total": len(items)}
+
+
+@api_router.patch("/products/{product_id}/approval")
+async def set_product_approval(product_id: str, payload: ProductApprovalInput, _: dict = Depends(require_admin)):
+    if payload.approval_status not in ("approved", "rejected", "pending"):
+        raise HTTPException(status_code=400, detail="approval_status must be approved, rejected, or pending")
+    try:
+        oid = ObjectId(product_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid product id")
+    doc = await db.products.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Product not found")
+    await db.products.update_one({"_id": oid}, {"$set": {"approval_status": payload.approval_status}})
+    doc["approval_status"] = payload.approval_status
+    return product_doc_to_out(doc)
 
 
 @api_router.put("/products/{product_id}")

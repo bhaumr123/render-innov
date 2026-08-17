@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import api from "@/lib/api";
+import api, { resolveUploadUrl } from "@/lib/api";
 
 export default function Orders() {
   const [orders, setOrders] = useState(null);
@@ -44,7 +44,7 @@ export default function Orders() {
                 <ul className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {o.items.map((it, i) => (
                     <li key={i} className="flex gap-3">
-                      <img src={it.image_url} className="w-16 h-16 object-contain bg-parchment/30 rounded" alt="" />
+                      <img src={resolveUploadUrl(it.image_url)} className="w-16 h-16 object-contain bg-parchment/30 rounded" alt="" />
                       <div className="text-sm">
                         <Link to={`/product/${it.product_id}`} className="font-medium hover:text-terracotta line-clamp-2 transition-colors">{it.title}</Link>
                         <div className="text-xs text-muted-warm mt-0.5">

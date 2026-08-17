@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useCart } from "@/context/CartContext";
 import WishlistButton from "@/components/WishlistButton";
+import { resolveUploadUrl } from "@/lib/api";
 
 export default function ProductCard({ product }) {
   const { addToCart } = useCart();
@@ -38,7 +39,7 @@ export default function ProductCard({ product }) {
       <div className="aspect-square bg-parchment/40 flex items-center justify-center p-4 overflow-hidden relative">
         <WishlistButton productId={product.id} size={16} className="absolute top-2 right-2 h-8 w-8" />
         <img
-          src={product.image_url}
+          src={resolveUploadUrl(product.image_url)}
           alt={product.title}
           className="max-h-full max-w-full object-contain group-hover:scale-[1.02] transition-transform"
           loading="lazy"

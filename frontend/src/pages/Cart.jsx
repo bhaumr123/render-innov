@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
 import { Trash2, Plus, Minus } from "lucide-react";
-import api from "@/lib/api";
+import api, { resolveUploadUrl } from "@/lib/api";
 
 export default function Cart() {
   const { cart, updateQty, removeItem, isGuest } = useCart();
@@ -43,7 +43,7 @@ export default function Cart() {
               return (
                 <li key={key} className="py-5 flex gap-4" data-testid={`cart-item-${it.product_id}`}>
                   <Link to={`/product/${it.product_id}`} className="w-24 h-24 shrink-0 bg-parchment/40 border border-warm rounded flex items-center justify-center">
-                    <img src={it.product?.image_url} className="max-w-full max-h-full object-contain" alt={it.product?.title} />
+                    <img src={resolveUploadUrl(it.product?.image_url)} className="max-w-full max-h-full object-contain" alt={it.product?.title} />
                   </Link>
                   <div className="flex-1 min-w-0">
                     <Link to={`/product/${it.product_id}`} className="font-heading text-base font-semibold text-ink line-clamp-2 hover:text-terracotta transition-colors">

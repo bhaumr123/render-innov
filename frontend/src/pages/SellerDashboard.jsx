@@ -1,24 +1,38 @@
 import React, { useEffect, useState } from "react";
-import api, { BACKEND_URL } from "@/lib/api";
+import api, { resolveUploadUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, ImagePlus, QrCode } from "lucide-react";
+import { Trash2, ImagePlus, QrCode, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-// Uploaded files are returned as a relative "/uploads/.." path; resolve to
-// an absolute URL against the API's own origin so <img> tags load correctly.
-const resolveUrl = (path) => (path && path.startsWith("/") ? `${BACKEND_URL}${path}` : path);
+const emptyForm = { title: "", image_url: "", image_url_2: "", qr_code_url: "" };
 
-const emptyForm = { title: "", image_url: "", qr_code_url: "" };
+const APPROVAL_BADGE = {
+  pending: { label: "Pending review", icon: Clock, className: "text-amber-700 bg-amber-100 border-amber-200" },
+  approved: { label: "Live", icon: CheckCircle2, className: "text-sage bg-sage/10 border-sage/30" },
+  rejected: { label: "Rejected", icon: XCircle, className: "text-terracotta bg-terracotta/10 border-terracotta/30" },
+};
+
+function ApprovalBadge({ status }) {
+  const cfg = APPROVAL_BADGE[status] || APPROVAL_BADGE.approved;
+  const Icon = cfg.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border w-fit ${cfg.className}`}>
+      <Icon size={11} /> {cfg.label}
+    </span>
+  );
+}
 
 export default function SellerDashboard() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [imagePreview, setImagePreview] = useState("");
+  const [image2Preview, setImage2Preview] = useState("");
   const [qrPreview, setQrPreview] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingImage2, setUploadingImage2] = useState(false);
   const [uploadingQr, setUploadingQr] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -49,6 +63,22 @@ export default function SellerDashboard() {
     }
   };
 
+  const onPickImage2 = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImage2Preview(URL.createObjectURL(file));
+    setUploadingImage2(true);
+    try {
+      const url = await uploadFile(file);
+      setForm((f) => ({ ...f, image_url_2: url }));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Could not upload second picture");
+      setImage2Preview("");
+    } finally {
+      setUploadingImage2(false);
+    }
+  };
+
   const onPickQr = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -70,10 +100,16 @@ export default function SellerDashboard() {
     if (!form.title.trim()) return;
     setSaving(true);
     try {
-      await api.post("/products", form);
-      toast.success("Product listed");
+      await api.post("/products", {
+        title: form.title,
+        image_url: form.image_url,
+        qr_code_url: form.qr_code_url,
+        images: form.image_url_2 ? [form.image_url_2] : [],
+      });
+      toast.success("Product submitted for admin approval");
       setForm(emptyForm);
       setImagePreview("");
+      setImage2Preview("");
       setQrPreview("");
       loadProducts();
     } catch (err) {
@@ -105,6 +141,9 @@ export default function SellerDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-6">
         <form onSubmit={submit} className="bg-surface border border-warm rounded-lg p-5 space-y-4 h-fit" data-testid="seller-product-form">
           <h2 className="font-heading text-lg font-semibold">List a new product</h2>
+          <p className="text-xs text-muted-warm -mt-2">
+            New listings are reviewed by an admin before they appear in the shop.
+          </p>
 
           <div>
             <Label htmlFor="seller-product-name">Product name</Label>
@@ -118,30 +157,58 @@ export default function SellerDashboard() {
             />
           </div>
 
-          <div>
-            <Label>Product picture</Label>
-            <label
-              htmlFor="seller-product-image"
-              data-testid="seller-product-image-drop"
-              className="mt-1 flex flex-col items-center justify-center gap-2 border border-dashed border-warm rounded-lg py-6 cursor-pointer hover:bg-parchment/50 transition-colors"
-            >
-              {imagePreview ? (
-                <img src={imagePreview} alt="Product preview" className="h-28 w-28 object-cover rounded-md" />
-              ) : (
-                <ImagePlus size={28} className="text-muted-warm" />
-              )}
-              <span className="text-xs text-muted-warm">
-                {uploadingImage ? "Uploading…" : imagePreview ? "Change picture" : "Click to upload a product picture"}
-              </span>
-            </label>
-            <input
-              id="seller-product-image"
-              data-testid="seller-product-image-input"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              className="hidden"
-              onChange={onPickImage}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Product picture 1</Label>
+              <label
+                htmlFor="seller-product-image"
+                data-testid="seller-product-image-drop"
+                className="mt-1 flex flex-col items-center justify-center gap-2 border border-dashed border-warm rounded-lg py-5 cursor-pointer hover:bg-parchment/50 transition-colors"
+              >
+                {imagePreview ? (
+                  <img src={imagePreview} alt="Product preview" className="h-20 w-20 object-cover rounded-md" />
+                ) : (
+                  <ImagePlus size={24} className="text-muted-warm" />
+                )}
+                <span className="text-[11px] text-muted-warm text-center px-1">
+                  {uploadingImage ? "Uploading…" : imagePreview ? "Change" : "Upload picture"}
+                </span>
+              </label>
+              <input
+                id="seller-product-image"
+                data-testid="seller-product-image-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={onPickImage}
+              />
+            </div>
+
+            <div>
+              <Label>Product picture 2 <span className="text-muted-warm normal-case">(optional)</span></Label>
+              <label
+                htmlFor="seller-product-image-2"
+                data-testid="seller-product-image2-drop"
+                className="mt-1 flex flex-col items-center justify-center gap-2 border border-dashed border-warm rounded-lg py-5 cursor-pointer hover:bg-parchment/50 transition-colors"
+              >
+                {image2Preview ? (
+                  <img src={image2Preview} alt="Second product preview" className="h-20 w-20 object-cover rounded-md" />
+                ) : (
+                  <ImagePlus size={24} className="text-muted-warm" />
+                )}
+                <span className="text-[11px] text-muted-warm text-center px-1">
+                  {uploadingImage2 ? "Uploading…" : image2Preview ? "Change" : "Upload picture"}
+                </span>
+              </label>
+              <input
+                id="seller-product-image-2"
+                data-testid="seller-product-image2-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={onPickImage2}
+              />
+            </div>
           </div>
 
           <div>
@@ -173,10 +240,10 @@ export default function SellerDashboard() {
           <button
             type="submit"
             data-testid="seller-product-save"
-            disabled={saving || uploadingImage || uploadingQr}
+            disabled={saving || uploadingImage || uploadingImage2 || uploadingQr}
             className="w-full bg-ink text-cream text-sm font-medium rounded-full py-2.5 hover:bg-terracotta transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? "Saving…" : "Add product"}
+            {saving ? "Saving…" : "Submit for approval"}
           </button>
         </form>
 
@@ -186,12 +253,15 @@ export default function SellerDashboard() {
             {products.map((p) => (
               <div key={p.id} data-testid={`seller-product-${p.id}`} className="border border-warm rounded-lg p-3 flex gap-3">
                 <img
-                  src={resolveUrl(p.image_url) || "https://placehold.co/80x80?text=No+image"}
+                  src={resolveUploadUrl(p.image_url) || "https://placehold.co/80x80?text=No+image"}
                   alt={p.title}
                   className="w-16 h-16 object-cover rounded bg-parchment/40 shrink-0"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium line-clamp-1">{p.title}</div>
+                  <div className="mt-1">
+                    <ApprovalBadge status={p.approval_status} />
+                  </div>
                   {p.qr_code_url ? (
                     <div className="flex items-center gap-1.5 text-[11px] text-sage mt-1">
                       <QrCode size={12} /> QR code attached

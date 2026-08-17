@@ -1,16 +1,11 @@
 import React, { useState } from "react";
-import { BACKEND_URL } from "@/lib/api";
+import { resolveUploadUrl } from "@/lib/api";
 import { QrCode, X } from "lucide-react";
-
-// Uploaded files are returned as a relative "/uploads/.." path when Cloudinary
-// isn't configured; resolve those against the API's own origin. Cloudinary
-// URLs are already absolute and pass through unchanged.
-const resolveUrl = (path) => (path && path.startsWith("/") ? `${BACKEND_URL}${path}` : path);
 
 export default function SellerQrCard({ qrUrl, title = "Scan & pay via UPI", subtitle, testId = "seller-qr-card" }) {
   const [open, setOpen] = useState(false);
   if (!qrUrl) return null;
-  const src = resolveUrl(qrUrl);
+  const src = resolveUploadUrl(qrUrl);
 
   return (
     <>

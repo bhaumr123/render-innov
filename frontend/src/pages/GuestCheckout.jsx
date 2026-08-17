@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
-import api, { formatApiError } from "@/lib/api";
+import api, { formatApiError, resolveUploadUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -334,7 +334,7 @@ export default function GuestCheckout() {
             <ul className="divide-y divide-warm">
               {cart.items.map((it) => (
                 <li key={`${it.product_id}::${it.variant_label || ""}`} className="py-3 flex items-center gap-3">
-                  <img src={it.product?.image_url} className="w-14 h-14 object-contain" alt="" />
+                  <img src={resolveUploadUrl(it.product?.image_url)} className="w-14 h-14 object-contain" alt="" />
                   <div className="flex-1 text-sm">
                     <div className="line-clamp-1 font-medium">{it.product?.title}</div>
                     <div className="text-xs text-muted-warm">
