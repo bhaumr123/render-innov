@@ -47,10 +47,28 @@ For `iwi-backend`, Render will prompt for the env vars marked `sync: false`:
 | `TWILIO_ACCOUNT_SID` | From your Twilio console home page. **Optional** — without it, order-confirmation WhatsApp messages are skipped (logged instead) and email confirmations still go out via SMTP. |
 | `TWILIO_AUTH_TOKEN` | Same page. |
 | `TWILIO_WHATSAPP_FROM` | Your Twilio WhatsApp-enabled number in the form `whatsapp:+14155238886` (that's the shared sandbox number while testing — join it by sending the join code Twilio gives you from your own WhatsApp first). |
+| `ADMIN_WHATSAPP_NUMBERS` | Comma-separated admin phone number(s) in E.164 form, e.g. `+919876543210,+919812345678`. These get a WhatsApp message on every new seller signup and every pending product — and are the *only* numbers allowed to approve/reject a product by replying `APPROVE <code>` / `REJECT <code>`. Needs Twilio configured (above) and, while on the sandbox, each number must have joined it first. |
 
 `JWT_SECRET` auto-generates on first deploy — no action needed.
 
 Click **Save Changes**. The build kicks off automatically.
+
+### Enabling "approve from WhatsApp" (one extra step)
+
+Sending admin notifications works as soon as `TWILIO_*` and `ADMIN_WHATSAPP_NUMBERS`
+are set. To let an admin **reply** `APPROVE <code>` / `REJECT <code>` and have
+it actually act on the product, Twilio needs to know where to forward that
+reply:
+
+1. Twilio Console → **Messaging → Try it out → Send a WhatsApp message**
+   (sandbox) or your approved **WhatsApp Sender** (production).
+2. Find **"When a message comes in"** (sandbox: *Sandbox Settings*;
+   production: the Sender's configuration).
+3. Set it to `https://<your-backend-url>/api/webhooks/twilio/whatsapp`,
+   method **HTTP POST**, and save.
+
+Without this step, admins still *receive* the WhatsApp notifications and can
+approve as normal from the dashboard — they just can't approve by replying.
 
 ## Step 4 — Watch the build
 
@@ -113,3 +131,5 @@ Push to GitHub → Render auto-deploys both services. That's it.
 | Seller upload returns "Image upload failed" | Check **iwi-backend → Logs** for the Cloudinary error — usually an invalid or expired `CLOUDINARY_URL`. Re-copy it from the Cloudinary Dashboard. |
 | No WhatsApp confirmation after checkout | Check **iwi-backend → Logs** for `[WHATSAPP UNCONFIGURED]` (Twilio env vars unset — expected until you set them) or a Twilio error. If using the sandbox number, the buyer's phone must have joined it first by messaging the join code from their own WhatsApp. |
 | No confirmation email after checkout | Check **iwi-backend → Logs** for `[SMTP UNCONFIGURED]` — same SMTP env vars used for password-reset emails power this too. |
+| No WhatsApp ping on new seller signup / new product | Check `ADMIN_WHATSAPP_NUMBERS` is set (comma-separated, `+`-prefixed E.164) and that number has joined the Twilio sandbox if you're not yet on a production Sender. |
+| Replying "APPROVE `<code>`" does nothing | The Twilio "when a message comes in" webhook isn't pointed at `/api/webhooks/twilio/whatsapp` yet — see the setup step above. Also confirm you're replying from a number listed in `ADMIN_WHATSAPP_NUMBERS`, exactly (E.164, no spaces). |

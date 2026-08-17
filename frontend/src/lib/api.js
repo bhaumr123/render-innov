@@ -8,6 +8,27 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Must match backend SESSION_SUPERSEDED_DETAIL exactly (backend/server.py).
+export const SESSION_SUPERSEDED_DETAIL = "Session ended — you're signed in from another device.";
+
+// One active session per account (buyer/seller — admin is exempt): logging
+// in elsewhere invalidates this browser's session. Any request can surface
+// that as a 401 with this exact message, not just the next page load — catch
+// it globally so the user lands on a login screen that explains why, instead
+// of a confusing failure on whatever action they happened to be doing.
+let redirectingForSupersededSession = false;
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const isSuperseded = err?.response?.status === 401 && err.response?.data?.detail === SESSION_SUPERSEDED_DETAIL;
+    if (isSuperseded && !redirectingForSupersededSession && !window.location.pathname.startsWith("/login")) {
+      redirectingForSupersededSession = true;
+      window.location.assign("/login?reason=session_replaced");
+    }
+    return Promise.reject(err);
+  }
+);
+
 // Uploaded files (product pictures, QR codes) are returned as a relative
 // "/uploads/.." path when Cloudinary isn't configured; resolve those against
 // the API's own origin so <img> tags load correctly. Cloudinary URLs are

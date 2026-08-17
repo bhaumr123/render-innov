@@ -19,6 +19,11 @@
 
 html, body {
     background-color: var(--iwi-white);
+    /* Backs up the fixed-width viewport meta tag (index.html): guarantees the
+       desktop layout never reflows to a mobile one even if a browser doesn't
+       fully honor that meta tag. Narrower viewports get a horizontal scrollbar
+       instead of a different layout — mobile always sees the same page as desktop. */
+    min-width: 1300px;
 }
 
 body {
