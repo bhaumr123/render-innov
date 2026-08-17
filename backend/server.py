@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 import os
 import re
+import base64
 import logging
 import uuid
 import asyncio
@@ -338,6 +339,10 @@ def product_doc_to_out(doc: dict) -> dict:
         # value (admin-created, or created before this field existed) are
         # treated as already approved.
         "approval_status": doc.get("approval_status") or "approved",
+        # Short code a seller submission gets stamped with, so an admin can
+        # approve/reject it by replying "APPROVE <code>" over WhatsApp
+        # instead of needing to open the dashboard.
+        "approval_code": doc.get("approval_code", ""),
         "rating": float(doc.get("rating", 4.9)),
         "reviews_count": int(doc.get("reviews_count", 0)),
         "brand": doc.get("brand", "IWI"),
@@ -377,6 +382,8 @@ async def register(payload: RegisterInput, response: Response):
     access = create_access_token(uid, email, role)
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
+    if role == "seller":
+        asyncio.create_task(_notify_admin_new_seller(doc))
     return {
         "id": uid, "email": email, "name": payload.name, "role": role, "code": code,
         "state": doc["state"], "city": doc["city"], "gst_number": doc["gst_number"],
@@ -749,10 +756,13 @@ async def create_product(payload: ProductIn, user: dict = Depends(require_seller
         doc["approval_status"] = "pending"
         doc["state"] = user.get("state", "")
         doc["city"] = user.get("city", "")
+        doc["approval_code"] = secrets.token_hex(3).upper()  # e.g. "A1B2C3" — typeable in a WhatsApp reply
     else:
         doc["approval_status"] = "approved"
     res = await db.products.insert_one(doc)
     doc["_id"] = res.inserted_id
+    if doc.get("approval_status") == "pending":
+        asyncio.create_task(_notify_admin_new_product(doc, user))
     return product_doc_to_out(doc)
 
 
@@ -1159,6 +1169,130 @@ async def _send_order_confirmation_whatsapp(phone: str, name: str, order: dict):
         await run_in_threadpool(_send_whatsapp_sync, to_whatsapp, body)
     except Exception as e:
         logging.error(f"WhatsApp order confirmation failed to {phone}: {e}")
+
+
+# ---------- Admin WhatsApp notifications + approve/reject-by-reply ----------
+# Comma-separated E.164 numbers, e.g. "+919876543210,+919812345678" — these
+# get pinged on every new seller signup / pending product, and are the only
+# numbers the inbound webhook below will act on.
+ADMIN_WHATSAPP_NUMBERS = [n.strip() for n in os.environ.get("ADMIN_WHATSAPP_NUMBERS", "").split(",") if n.strip()]
+
+
+def _admin_whatsapp_targets() -> List[str]:
+    out = []
+    for n in ADMIN_WHATSAPP_NUMBERS:
+        norm = _normalize_whatsapp_number(n)
+        if norm:
+            out.append(norm)
+    return out
+
+
+async def _send_admin_whatsapp(body: str):
+    """Fire-and-forget WhatsApp ping to every configured admin number. Never
+    blocks or raises into the calling request — failures are just logged."""
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM):
+        logging.warning(f"[WHATSAPP UNCONFIGURED] Admin notification: {body[:80]}")
+        return
+    targets = _admin_whatsapp_targets()
+    if not targets:
+        logging.warning("[WHATSAPP UNCONFIGURED] ADMIN_WHATSAPP_NUMBERS not set — admin notification not sent")
+        return
+    for to_whatsapp in targets:
+        try:
+            await run_in_threadpool(_send_whatsapp_sync, to_whatsapp, body)
+        except Exception as e:
+            logging.error(f"Admin WhatsApp notification failed to {to_whatsapp}: {e}")
+
+
+async def _notify_admin_new_seller(seller_doc: dict):
+    frontend_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    body = (
+        f"🆕 New seller signed up on IWI\n"
+        f"{seller_doc.get('name')} ({seller_doc.get('code', '')})\n"
+        f"{seller_doc.get('email')}\n"
+        f"{seller_doc.get('city', '')}, {seller_doc.get('state', '')}\n"
+        f"GSTIN: {seller_doc.get('gst_number', '')}"
+        + (f"\n\n{frontend_url}/admin" if frontend_url else "")
+    )
+    await _send_admin_whatsapp(body)
+
+
+async def _notify_admin_new_product(product_doc: dict, seller: dict):
+    code = product_doc.get("approval_code", "")
+    body = (
+        f"🛍️ New product awaiting approval on IWI\n"
+        f"{product_doc.get('title')}\n"
+        f"Seller: {seller.get('name')} ({seller.get('code', '')})\n"
+        f"Price: Rs.{float(product_doc.get('price', 0) or 0):.2f}\n\n"
+        f"Reply APPROVE {code} or REJECT {code} to act now — "
+        f"or review it in the dashboard."
+    )
+    await _send_admin_whatsapp(body)
+
+
+def _xml_escape(s: str) -> str:
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _validate_twilio_signature(url: str, params: dict, signature: str) -> bool:
+    """Twilio signs webhook requests with HMAC-SHA1 over the exact request
+    URL + sorted POST params, base64-encoded — verifying it stops anyone who
+    isn't Twilio from POSTing forged approve/reject commands at this
+    endpoint. See https://www.twilio.com/docs/usage/webhooks/webhooks-security."""
+    if not TWILIO_AUTH_TOKEN or not signature:
+        return False
+    s = url
+    for key in sorted(params.keys()):
+        s += key + params[key]
+    computed = base64.b64encode(
+        hmac.new(TWILIO_AUTH_TOKEN.encode("utf-8"), s.encode("utf-8"), hashlib.sha1).digest()
+    ).decode("utf-8")
+    return hmac.compare_digest(computed, signature)
+
+
+@api_router.post("/webhooks/twilio/whatsapp")
+async def twilio_whatsapp_webhook(request: Request):
+    """Inbound WhatsApp messages from Twilio. An admin replying "APPROVE
+    <code>" / "REJECT <code>" to a pending-product notification approves or
+    rejects that product without opening the dashboard. Only numbers listed
+    in ADMIN_WHATSAPP_NUMBERS can act — everyone else is silently ignored."""
+    form = await request.form()
+    params = {k: str(v) for k, v in form.items()}
+    signature = request.headers.get("X-Twilio-Signature", "")
+    # Twilio signs the exact public URL it called — respect a reverse proxy's
+    # original scheme/host (Render sits behind one) rather than the internal one.
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    full_url = f"{proto}://{host}{request.url.path}"
+    if not _validate_twilio_signature(full_url, params, signature):
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
+    sender = (params.get("From") or "").replace("whatsapp:", "").strip()
+    allowed = {n.replace("whatsapp:", "") for n in _admin_whatsapp_targets()}
+    body_text = (params.get("Body") or "").strip()
+    reply = ""
+
+    if sender in allowed:
+        m = re.match(r"^(APPROVE|REJECT)\s+([A-Za-z0-9]{4,8})$", body_text, re.IGNORECASE)
+        if not m:
+            reply = 'Reply like "APPROVE A1B2C3" or "REJECT A1B2C3" using the code from the notification.'
+        else:
+            action, code = m.group(1).upper(), m.group(2).upper()
+            product = await db.products.find_one({"approval_code": code})
+            if not product:
+                reply = f"No pending product found for code {code}."
+            elif product.get("approval_status") != "pending":
+                reply = f"{product.get('title')} is already {product.get('approval_status')}."
+            else:
+                status = "approved" if action == "APPROVE" else "rejected"
+                await db.products.update_one({"_id": product["_id"]}, {"$set": {"approval_status": status}})
+                verb = "Approved ✅" if status == "approved" else "Rejected ❌"
+                reply = f"{verb}: {product.get('title')} is now {status}."
+    # Non-admin senders get no reply at all — don't confirm this number even runs a bot.
+
+    twiml_body = f"<Message>{_xml_escape(reply)}</Message>" if reply else ""
+    twiml = f'<?xml version="1.0" encoding="UTF-8"?><Response>{twiml_body}</Response>'
+    return Response(content=twiml, media_type="application/xml")
 
 
 async def _send_order_confirmation_email(recipient_email: str, recipient_name: str, order: dict):
