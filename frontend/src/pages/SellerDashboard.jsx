@@ -174,6 +174,18 @@ export default function SellerDashboard() {
         <div className="text-[11px] tracking-[0.3em] uppercase text-sage mb-1">Seller</div>
         <h1 className="font-heading text-3xl font-semibold">Your storefront</h1>
         <p className="text-sm text-muted-warm mt-1">Signed in as {user?.email}</p>
+        <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
+          {user?.code && (
+            <span className="font-mono bg-sage/10 text-sage border border-sage/30 rounded-full px-2.5 py-1" data-testid="seller-vendor-code">
+              Vendor code: {user.code}
+            </span>
+          )}
+          {(user?.city || user?.state) && (
+            <span className="text-muted-warm" data-testid="seller-location">
+              {[user.city, user.state].filter(Boolean).join(", ")}
+            </span>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="products">

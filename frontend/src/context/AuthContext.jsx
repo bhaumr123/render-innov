@@ -32,10 +32,10 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const register = async (email, password, name, role = "customer") => {
+  const register = async (email, password, name, role = "customer", state = "", city = "") => {
     setError("");
     try {
-      const { data } = await api.post("/auth/register", { email, password, name, role });
+      const { data } = await api.post("/auth/register", { email, password, name, role, state, city });
       setUser(data);
       return true;
     } catch (e) {

@@ -27,7 +27,8 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, BeforeValidator, field_validator
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, BeforeValidator, field_validator, model_validator
+from pymongo import ReturnDocument
 
 
 # ---------- MongoDB ----------
@@ -106,6 +107,33 @@ def get_razorpay_client() -> Optional["razorpay.Client"]:
     return razorpay.Client(auth=(key_id, key_secret))
 
 
+# ---------- India states/UTs (seller location + statewise storefront filter) ----------
+INDIA_STATES = [
+    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa",
+    "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala",
+    "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland",
+    "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+    "Uttar Pradesh", "Uttarakhand", "West Bengal",
+    "Andaman and Nicobar Islands", "Chandigarh",
+    "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir",
+    "Ladakh", "Lakshadweep", "Puducherry",
+]
+
+
+# ---------- Sequential vendor/customer codes ----------
+async def _next_code(prefix: str, counter_name: str, width: int = 5) -> str:
+    """Atomically increments a named counter and returns e.g. 'VEN-00001'.
+    Every seller gets a unique vendor code and every other signed-up user a
+    unique customer code, independent of (possibly duplicate) display names."""
+    doc = await db.counters.find_one_and_update(
+        {"_id": counter_name},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return f"{prefix}-{doc['seq']:0{width}d}"
+
+
 # ---------- Models ----------
 PyObjectId = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, ObjectId) else v)]
 
@@ -115,6 +143,8 @@ class RegisterInput(BaseModel):
     password: str = Field(min_length=6)
     name: str = Field(min_length=1, max_length=80)
     role: str = "customer"
+    state: str = ""  # required for sellers — where they ship from
+    city: str = ""
 
     @field_validator("role")
     @classmethod
@@ -123,6 +153,15 @@ class RegisterInput(BaseModel):
         if v not in ("customer", "seller"):
             return "customer"
         return v
+
+    @model_validator(mode="after")
+    def _require_seller_location(self):
+        if self.role == "seller":
+            if not self.city.strip():
+                raise ValueError("City is required for a seller account")
+            if self.state not in INDIA_STATES:
+                raise ValueError("A valid Indian state is required for a seller account")
+        return self
 
 
 class LoginInput(BaseModel):
@@ -135,6 +174,9 @@ class UserOut(BaseModel):
     email: EmailStr
     name: str
     role: str
+    code: str = ""
+    state: str = ""
+    city: str = ""
 
 
 class ProductIn(BaseModel):
@@ -147,6 +189,10 @@ class ProductIn(BaseModel):
     images: List[str] = []
     qr_code_url: str = ""  # seller's payment QR code (e.g. UPI QR)
     seller_id: Optional[str] = None
+    # Stamped server-side from the owning seller's profile (not client-settable)
+    # so the storefront's statewise filter has something to query against.
+    state: str = ""
+    city: str = ""
     rating: float = 4.9
     reviews_count: int = 0
     brand: str = "IWI"
@@ -247,6 +293,8 @@ def product_doc_to_out(doc: dict) -> dict:
         "images": doc.get("images", []),
         "qr_code_url": doc.get("qr_code_url", ""),
         "seller_id": doc.get("seller_id"),
+        "state": doc.get("state", ""),
+        "city": doc.get("city", ""),
         # Seller-submitted products start "pending" and stay off the public
         # storefront until an admin approves them. Products with no stored
         # value (admin-created, or created before this field existed) are
@@ -268,11 +316,20 @@ async def register(payload: RegisterInput, response: Response):
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
     role = payload.role  # already restricted to customer/seller by validator
+    # Vendor codes for sellers, customer codes for everyone else — a stable,
+    # unique identifier independent of (possibly duplicate) display names.
+    if role == "seller":
+        code = await _next_code("VEN", "seller_code")
+    else:
+        code = await _next_code("CUS", "customer_code")
     doc = {
         "email": email,
         "password_hash": hash_password(payload.password),
         "name": payload.name,
         "role": role,
+        "code": code,
+        "state": payload.state if role == "seller" else "",
+        "city": payload.city.strip() if role == "seller" else "",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.users.insert_one(doc)
@@ -280,7 +337,18 @@ async def register(payload: RegisterInput, response: Response):
     access = create_access_token(uid, email, role)
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
-    return {"id": uid, "email": email, "name": payload.name, "role": role}
+    return {"id": uid, "email": email, "name": payload.name, "role": role, "code": code, "state": doc["state"], "city": doc["city"]}
+
+
+async def _ensure_user_code(uid: str, role: str, existing_code: str) -> str:
+    """Backfills a vendor/customer code for accounts created before this field
+    existed (e.g. the seeded admin, or pre-migration test accounts)."""
+    if existing_code:
+        return existing_code
+    prefix, counter = ("VEN", "seller_code") if role == "seller" else ("CUS", "customer_code")
+    code = await _next_code(prefix, counter)
+    await db.users.update_one({"_id": ObjectId(uid)}, {"$set": {"code": code}})
+    return code
 
 
 @api_router.post("/auth/login", response_model=UserOut)
@@ -290,10 +358,15 @@ async def login(payload: LoginInput, response: Response):
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     uid = str(user["_id"])
-    access = create_access_token(uid, email, user.get("role", "customer"))
+    role = user.get("role", "customer")
+    code = await _ensure_user_code(uid, role, user.get("code", ""))
+    access = create_access_token(uid, email, role)
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
-    return {"id": uid, "email": email, "name": user.get("name", ""), "role": user.get("role", "customer")}
+    return {
+        "id": uid, "email": email, "name": user.get("name", ""), "role": role,
+        "code": code, "state": user.get("state", ""), "city": user.get("city", ""),
+    }
 
 
 @api_router.post("/auth/logout")
@@ -305,7 +378,11 @@ async def logout(response: Response):
 
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(user: dict = Depends(get_current_user)):
-    return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"]}
+    code = await _ensure_user_code(user["id"], user["role"], user.get("code", ""))
+    return {
+        "id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"],
+        "code": code, "state": user.get("state", ""), "city": user.get("city", ""),
+    }
 
 
 # ---------- Password reset ----------
@@ -485,6 +562,7 @@ async def upload_image(file: UploadFile = File(...), _: dict = Depends(get_curre
 async def list_products(
     q: Optional[str] = None,
     category: Optional[str] = None,
+    state: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     sort: Optional[str] = None,
@@ -502,6 +580,8 @@ async def list_products(
         ]})
     if category and category.lower() != "all":
         query["category"] = category
+    if state and state.lower() != "all":
+        query["state"] = state
     if min_price is not None or max_price is not None:
         pr: dict = {}
         if min_price is not None:
@@ -541,6 +621,14 @@ async def list_categories():
     return {"categories": sorted([c for c in cats if c])}
 
 
+@api_router.get("/products/states")
+async def list_product_states():
+    """Full India states/UTs list for the storefront's statewise dropdown,
+    plus which of them currently have live products."""
+    with_products = set(await db.products.distinct("state", {"state": {"$nin": ["", None]}}))
+    return {"states": INDIA_STATES, "with_products": sorted(with_products)}
+
+
 @api_router.get("/products/{product_id}")
 async def get_product(product_id: str, user: Optional[dict] = Depends(get_current_user_optional)):
     try:
@@ -568,6 +656,8 @@ async def create_product(payload: ProductIn, user: dict = Depends(require_seller
     if user.get("role") == "seller":
         doc["seller_id"] = user["id"]
         doc["approval_status"] = "pending"
+        doc["state"] = user.get("state", "")
+        doc["city"] = user.get("city", "")
     else:
         doc["approval_status"] = "approved"
     res = await db.products.insert_one(doc)
@@ -629,6 +719,8 @@ async def update_product(product_id: str, payload: ProductIn, user: dict = Depen
     body = payload.model_dump()
     if user.get("role") == "seller":
         body["seller_id"] = user["id"]  # ownership can't be reassigned by a seller
+        body["state"] = user.get("state", "")
+        body["city"] = user.get("city", "")
     await db.products.update_one({"_id": oid}, {"$set": body})
     doc = await db.products.find_one({"_id": oid})
     if not doc:

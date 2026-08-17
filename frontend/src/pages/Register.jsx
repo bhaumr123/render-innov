@@ -3,7 +3,9 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { LOGO } from "@/lib/assets";
+import { INDIA_STATES } from "@/lib/indiaStates";
 
 export default function Register() {
   const { register, error, setError } = useAuth();
@@ -12,12 +14,14 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState(searchParams.get("role") === "seller" ? "seller" : "customer");
+  const [state, setState] = useState("");
+  const [city, setCity] = useState("");
   const navigate = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    const ok = await register(email, password, name, role);
+    const ok = await register(email, password, name, role, state, city);
     if (ok) navigate(role === "seller" ? "/seller/dashboard" : "/", { replace: true });
   };
 
@@ -62,6 +66,25 @@ export default function Register() {
             <Label htmlFor="email">Email</Label>
             <Input id="email" data-testid="reg-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
+
+          {role === "seller" && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>State</Label>
+                <Select value={state} onValueChange={setState}>
+                  <SelectTrigger data-testid="reg-state"><SelectValue placeholder="Select state" /></SelectTrigger>
+                  <SelectContent>
+                    {INDIA_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="city">City</Label>
+                <Input id="city" data-testid="reg-city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Jaipur" required />
+              </div>
+            </div>
+          )}
+
           <div>
             <Label htmlFor="password">Password</Label>
             <Input id="password" data-testid="reg-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />

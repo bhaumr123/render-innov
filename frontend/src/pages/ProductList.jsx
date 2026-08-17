@@ -9,16 +9,19 @@ export default function ProductList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const q = searchParams.get("q") || "";
   const category = searchParams.get("category") || "";
+  const state = searchParams.get("state") || "";
   const sort = searchParams.get("sort") || "";
 
   const [priceRange, setPriceRange] = useState([0, 2000]);
   const [categories, setCategories] = useState([]);
+  const [states, setStates] = useState([]);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.get("/products/categories").then((r) => setCategories(r.data.categories || []));
+    api.get("/products/states").then((r) => setStates(r.data.with_products || []));
   }, []);
 
   useEffect(() => {
@@ -26,6 +29,7 @@ export default function ProductList() {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (category) params.set("category", category);
+    if (state) params.set("state", state);
     if (sort) params.set("sort", sort);
     params.set("min_price", priceRange[0]);
     params.set("max_price", priceRange[1]);
@@ -35,7 +39,7 @@ export default function ProductList() {
       setTotal(r.data.total || 0);
       setLoading(false);
     });
-  }, [q, category, sort, priceRange]);
+  }, [q, category, state, sort, priceRange]);
 
   const setParam = (k, v) => {
     const p = new URLSearchParams(searchParams);
@@ -100,6 +104,19 @@ export default function ProductList() {
               ))}
             </ul>
           </div>
+
+          {states.length > 0 && (
+            <div className="mt-8">
+              <div className="font-heading font-semibold text-sm uppercase tracking-widest text-muted-warm mb-3">State</div>
+              <Select value={state || "all"} onValueChange={(v) => setParam("state", v === "all" ? "" : v)}>
+                <SelectTrigger data-testid="filter-state-select" className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All states</SelectItem>
+                  {states.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="mt-8">
             <div className="font-heading font-semibold text-sm uppercase tracking-widest text-muted-warm mb-3">Price</div>

@@ -36,6 +36,7 @@ def seller():
     email = f"TEST_cseller_{uuid.uuid4().hex[:8]}@shop.com"
     r = s.post(f"{API}/auth/register", json={
         "email": email, "password": "SellerPass123", "name": "T Seller", "role": "seller",
+        "state": "Rajasthan", "city": "Jaipur",
     }, timeout=15)
     assert r.status_code == 200
     return s

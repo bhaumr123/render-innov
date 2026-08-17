@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
 import Testimonials from "@/components/Testimonials";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { CAT_TEAS, CAT_SPICES, CAT_ARTISAN, LOGO } from "@/lib/assets";
-import { Leaf, Sprout, Package } from "lucide-react";
+import { Leaf, Sprout, Package, MapPin } from "lucide-react";
 
 const CATEGORY_TILES = [
   { name: "Teas", img: CAT_TEAS, blurb: "Small-batch, hand-picked, brewed for calm." },
@@ -15,13 +16,22 @@ const CATEGORY_TILES = [
 export default function Home() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [states, setStates] = useState([]);
+  const [state, setState] = useState("");
 
   useEffect(() => {
-    api.get("/products?limit=12&sort=rating").then((r) => {
+    api.get("/products/states").then((r) => setStates(r.data.with_products || []));
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams({ limit: "12", sort: "rating" });
+    if (state) params.set("state", state);
+    api.get(`/products?${params.toString()}`).then((r) => {
       setProducts(r.data.items || []);
       setLoading(false);
     });
-  }, []);
+  }, [state]);
 
   return (
     <div className="pb-16">
@@ -117,23 +127,45 @@ export default function Home() {
 
       {/* Featured products */}
       <section className="max-w-screen-xl mx-auto px-6 mt-16">
-        <div className="flex items-end justify-between mb-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 mb-6">
           <div>
             <div className="text-[11px] tracking-[0.3em] uppercase text-sage mb-1">On the shelves</div>
             <h2 className="font-heading text-3xl md:text-4xl font-semibold">Featured picks</h2>
           </div>
-          <Link to="/products?sort=rating" data-testid="home-see-all" className="text-sm text-ink hover:text-terracotta transition-colors border-b border-ink/30 hover:border-terracotta pb-0.5">
-            See all →
-          </Link>
+          <div className="flex items-center gap-3">
+            {states.length > 0 && (
+              <div className="flex items-center gap-2">
+                <MapPin size={14} className="text-muted-warm" />
+                <Select value={state || "all"} onValueChange={(v) => setState(v === "all" ? "" : v)}>
+                  <SelectTrigger data-testid="home-state-select" className="w-[190px] h-9 bg-surface text-sm">
+                    <SelectValue placeholder="All states" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All states</SelectItem>
+                    {states.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <Link
+              to={state ? `/products?sort=rating&state=${encodeURIComponent(state)}` : "/products?sort=rating"}
+              data-testid="home-see-all"
+              className="text-sm text-ink hover:text-terracotta transition-colors border-b border-ink/30 hover:border-terracotta pb-0.5 whitespace-nowrap"
+            >
+              See all →
+            </Link>
+          </div>
         </div>
 
         {loading ? (
           <div className="text-muted-warm text-sm">Steeping the shelf…</div>
         ) : products.length === 0 ? (
           <div className="bg-surface border border-warm rounded-lg p-10 text-center">
-            <div className="font-heading text-2xl font-semibold">The apothecary is being stocked.</div>
+            <div className="font-heading text-2xl font-semibold">
+              {state ? `No products from ${state} yet.` : "The apothecary is being stocked."}
+            </div>
             <p className="text-sm text-muted-warm mt-2">
-              Sign in as admin to seed the demo catalog from the admin panel.
+              {state ? "Try another state, or browse the full shelf." : "Sign in as admin to seed the demo catalog from the admin panel."}
             </p>
             <Link to="/login" className="mt-4 inline-block text-terracotta hover:underline text-sm">
               Admin sign in →

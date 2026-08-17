@@ -108,6 +108,11 @@ export default function Header() {
                   <DropdownMenuLabel className="font-normal">
                     <div className="text-xs text-muted-warm">Signed in as</div>
                     <div className="text-sm font-medium truncate">{user.email}</div>
+                    {user.code && (
+                      <div className="text-[10px] text-sage font-mono mt-0.5" data-testid="header-user-code">
+                        {user.role === "seller" ? "Vendor code" : "Customer code"}: {user.code}
+                      </div>
+                    )}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild><Link to="/orders" data-testid="menu-orders">Your orders</Link></DropdownMenuItem>

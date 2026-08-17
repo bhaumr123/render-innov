@@ -27,6 +27,7 @@ def seller():
     email = f"TEST_seller_{uuid.uuid4().hex[:8]}@shop.com"
     r = s.post(f"{API}/auth/register", json={
         "email": email, "password": "SellerPass123", "name": "T Seller", "role": "seller",
+        "state": "Rajasthan", "city": "Jaipur",
     }, timeout=15)
     assert r.status_code == 200, r.text
     assert r.json()["role"] == "seller"
@@ -139,6 +140,7 @@ class TestSellerProductApprovalGate:
         email = f"TEST_selfapprove_{uuid.uuid4().hex[:8]}@shop.com"
         s.post(f"{API}/auth/register", json={
             "email": email, "password": "SellerPass123", "name": "T", "role": "seller",
+            "state": "Rajasthan", "city": "Jaipur",
         }, timeout=15)
         r = s.post(f"{API}/products", json=_seller_product_payload(), timeout=15)
         pid = r.json()["id"]
