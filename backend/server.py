@@ -149,6 +149,15 @@ class ProductIn(BaseModel):
     reviews_count: int = 0
     brand: str = "IWI"
     size_variants: List[dict] = []  # [{"label":"50g","price":12.0,"stock":50}]
+    # What each size_variants amount is measured in — drives how the seller UI
+    # labels packaging sizes: liquids in "ml", solids by weight in "g", and
+    # anything else (e.g. beads, sachets) as a plain "count" of pieces.
+    unit_type: str = "count"
+
+    @field_validator("unit_type")
+    @classmethod
+    def validate_unit_type(cls, v: str) -> str:
+        return v if v in ("ml", "g", "count") else "count"
 
 
 class ProductOut(ProductIn):
@@ -245,6 +254,7 @@ def product_doc_to_out(doc: dict) -> dict:
         "reviews_count": int(doc.get("reviews_count", 0)),
         "brand": doc.get("brand", "IWI"),
         "size_variants": doc.get("size_variants", []),
+        "unit_type": doc.get("unit_type") or "count",
         "created_at": doc.get("created_at", datetime.now(timezone.utc).isoformat()),
     }
 

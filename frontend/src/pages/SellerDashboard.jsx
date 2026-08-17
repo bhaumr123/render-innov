@@ -3,10 +3,23 @@ import api, { resolveUploadUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, ImagePlus, QrCode, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Trash2, ImagePlus, QrCode, Clock, CheckCircle2, XCircle, Plus, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const emptyForm = { title: "", image_url: "", image_url_2: "", qr_code_url: "" };
+
+// Packaging sizes are entered as a plain number; the unit the seller picks
+// decides how it's labelled and stored — liquids in ml, solids by weight in
+// grams, and anything else (beads, sachets, sets…) as a count of pieces.
+const UNIT_TYPES = [
+  { value: "ml", label: "Liquid (ml)", suffix: "ml", placeholder: "e.g. 250", format: (v) => `${v}ml` },
+  { value: "g", label: "Solid · by weight (g)", suffix: "g", placeholder: "e.g. 100", format: (v) => `${v}g` },
+  { value: "count", label: "Solid · by piece (count)", suffix: "pcs", placeholder: "e.g. 10", format: (v) => `${v} pcs` },
+];
+const unitConfig = (unitType) => UNIT_TYPES.find((u) => u.value === unitType) || UNIT_TYPES[2];
+
+const emptySizeRow = () => ({ value: "", price: "", stock: 100 });
 
 const APPROVAL_BADGE = {
   pending: { label: "Pending review", icon: Clock, className: "text-amber-700 bg-amber-100 border-amber-200" },
@@ -28,6 +41,8 @@ export default function SellerDashboard() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(emptyForm);
+  const [unitType, setUnitType] = useState("count");
+  const [sizeRows, setSizeRows] = useState([emptySizeRow()]);
   const [imagePreview, setImagePreview] = useState("");
   const [image2Preview, setImage2Preview] = useState("");
   const [qrPreview, setQrPreview] = useState("");
@@ -95,9 +110,24 @@ export default function SellerDashboard() {
     }
   };
 
+  const addSizeRow = () => setSizeRows((rows) => [...rows, emptySizeRow()]);
+  const removeSizeRow = (idx) => setSizeRows((rows) => rows.filter((_, i) => i !== idx));
+  const setSizeField = (idx, key, val) => setSizeRows((rows) => rows.map((r, i) => (i === idx ? { ...r, [key]: val } : r)));
+
   const submit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
+
+    const cfg = unitConfig(unitType);
+    const sizeVariants = sizeRows
+      .filter((r) => r.value && !isNaN(parseFloat(r.price)))
+      .map((r) => ({ label: cfg.format(r.value), price: parseFloat(r.price), stock: parseInt(r.stock || 0, 10) }));
+
+    if (sizeVariants.length === 0) {
+      toast.error("Add at least one packaging size with a price");
+      return;
+    }
+
     setSaving(true);
     try {
       await api.post("/products", {
@@ -105,9 +135,14 @@ export default function SellerDashboard() {
         image_url: form.image_url,
         qr_code_url: form.qr_code_url,
         images: form.image_url_2 ? [form.image_url_2] : [],
+        unit_type: unitType,
+        size_variants: sizeVariants,
+        price: sizeVariants[0].price,
       });
       toast.success("Product submitted for admin approval");
       setForm(emptyForm);
+      setUnitType("count");
+      setSizeRows([emptySizeRow()]);
       setImagePreview("");
       setImage2Preview("");
       setQrPreview("");
@@ -129,6 +164,8 @@ export default function SellerDashboard() {
       toast.error("Failed to delete");
     }
   };
+
+  const cfg = unitConfig(unitType);
 
   return (
     <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-8">
@@ -155,6 +192,78 @@ export default function SellerDashboard() {
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               required
             />
+          </div>
+
+          <div>
+            <Label>Product type</Label>
+            <Select
+              value={unitType}
+              onValueChange={(v) => { setUnitType(v); setSizeRows([emptySizeRow()]); }}
+            >
+              <SelectTrigger data-testid="seller-unit-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {UNIT_TYPES.map((u) => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <div className="text-[10px] text-muted-warm mt-1">
+              {unitType === "ml" && "e.g. a 250 ml bottle of oil"}
+              {unitType === "g" && "e.g. a 100 g pouch of spice powder"}
+              {unitType === "count" && "e.g. a pack of 10 beads or sachets"}
+            </div>
+          </div>
+
+          <div className="border-t border-warm pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <Label>Packaging sizes</Label>
+              <button type="button" onClick={addSizeRow} data-testid="seller-size-add" className="text-xs text-terracotta hover:underline flex items-center gap-1">
+                <Plus size={12} /> Add size
+              </button>
+            </div>
+            {sizeRows.map((r, i) => (
+              <div key={i} className="grid grid-cols-[1fr_90px_70px_28px] gap-2 mb-2 items-center">
+                <div className="relative">
+                  <Input
+                    data-testid={`seller-size-value-${i}`}
+                    placeholder={cfg.placeholder}
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={r.value}
+                    onChange={(e) => setSizeField(i, "value", e.target.value)}
+                    className="pr-10"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-warm">{cfg.suffix}</span>
+                </div>
+                <Input
+                  data-testid={`seller-size-price-${i}`}
+                  placeholder="₹ Price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={r.price}
+                  onChange={(e) => setSizeField(i, "price", e.target.value)}
+                />
+                <Input
+                  data-testid={`seller-size-stock-${i}`}
+                  placeholder="Stock"
+                  type="number"
+                  min="0"
+                  value={r.stock}
+                  onChange={(e) => setSizeField(i, "stock", e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeSizeRow(i)}
+                  disabled={sizeRows.length === 1}
+                  className="text-muted-warm hover:text-terracotta disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+            <div className="text-[10px] text-muted-warm mt-1">
+              At least one packaging size with a price is required.
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -262,6 +371,11 @@ export default function SellerDashboard() {
                   <div className="mt-1">
                     <ApprovalBadge status={p.approval_status} />
                   </div>
+                  {(p.size_variants || []).length > 0 && (
+                    <div className="text-[11px] text-muted-warm mt-1 line-clamp-1">
+                      {p.size_variants.map((v) => `${v.label} · ₹${Number(v.price).toFixed(2)}`).join(" · ")}
+                    </div>
+                  )}
                   {p.qr_code_url ? (
                     <div className="flex items-center gap-1.5 text-[11px] text-sage mt-1">
                       <QrCode size={12} /> QR code attached

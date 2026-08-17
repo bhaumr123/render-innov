@@ -55,6 +55,42 @@ class TestSellerProductTwoPhotos:
         assert d["images"] == payload["images"]
 
 
+class TestPackagingUnitType:
+    def test_default_unit_type_is_count(self, seller):
+        r = seller.post(f"{API}/products", json=_seller_product_payload(), timeout=15)
+        assert r.status_code == 200, r.text
+        assert r.json()["unit_type"] == "count"
+
+    def test_seller_can_set_liquid_ml_sizes(self, seller):
+        payload = _seller_product_payload(
+            unit_type="ml",
+            size_variants=[
+                {"label": "250ml", "price": 199.0, "stock": 40},
+                {"label": "500ml", "price": 349.0, "stock": 25},
+            ],
+        )
+        r = seller.post(f"{API}/products", json=payload, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["unit_type"] == "ml"
+        assert d["size_variants"] == payload["size_variants"]
+
+    def test_seller_can_set_solid_gram_sizes(self, seller):
+        payload = _seller_product_payload(
+            unit_type="g",
+            size_variants=[{"label": "100g", "price": 79.0, "stock": 100}],
+        )
+        r = seller.post(f"{API}/products", json=payload, timeout=15)
+        assert r.status_code == 200, r.text
+        assert r.json()["unit_type"] == "g"
+
+    def test_invalid_unit_type_falls_back_to_count(self, seller):
+        payload = _seller_product_payload(unit_type="kg")  # not a supported unit
+        r = seller.post(f"{API}/products", json=payload, timeout=15)
+        assert r.status_code == 200, r.text
+        assert r.json()["unit_type"] == "count"
+
+
 class TestSellerProductApprovalGate:
     def test_new_seller_product_is_pending_and_hidden_from_public_list(self, seller):
         payload = _seller_product_payload()
