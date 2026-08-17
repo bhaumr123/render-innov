@@ -23,6 +23,7 @@ import ResetPassword from "@/pages/ResetPassword";
 import Orders from "@/pages/Orders";
 import Admin from "@/pages/Admin";
 import SellerDashboard from "@/pages/SellerDashboard";
+import Support from "@/pages/Support";
 import Wishlist from "@/pages/Wishlist";
 import About from "@/pages/About";
 import NotFound from "@/pages/NotFound";
@@ -55,6 +56,7 @@ function App() {
                   <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
                   <Route path="/admin" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
                   <Route path="/seller/dashboard" element={<ProtectedRoute sellerOnly><SellerDashboard /></ProtectedRoute>} />
+                  <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </main>

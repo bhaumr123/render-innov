@@ -6,7 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Trash2, Pencil, Plus, X } from "lucide-react";
+import {
+  Trash2, Pencil, Plus, X, IndianRupee, ShoppingBag, Store, PackageCheck,
+  AlertCircle, MessageSquareText,
+} from "lucide-react";
 import {
   IMG_BLUE_TEA, IMG_DHANIYA, IMG_CHILLI, IMG_OIL, IMG_BEADS,
   IMG_ASHWAGANDHA, IMG_HONEY, IMG_LOOSE_TEA,
@@ -24,6 +27,8 @@ export default function Admin() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [coupons, setCoupons] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [complaints, setComplaints] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [couponForm, setCouponForm] = useState({ code: "", discount_type: "percent", value: "", min_subtotal: 0, max_uses: 0, active: true });
@@ -31,8 +36,10 @@ export default function Admin() {
   const loadProducts = () => api.get("/products?limit=200").then((r) => setProducts(r.data.items || []));
   const loadOrders = () => api.get("/admin/orders").then((r) => setOrders(r.data.orders || []));
   const loadCoupons = () => api.get("/admin/coupons").then((r) => setCoupons(r.data.coupons || []));
+  const loadStats = () => api.get("/admin/stats").then((r) => setStats(r.data));
+  const loadComplaints = () => api.get("/admin/complaints").then((r) => setComplaints(r.data.items || []));
 
-  useEffect(() => { loadProducts(); loadOrders(); loadCoupons(); }, []);
+  useEffect(() => { loadProducts(); loadOrders(); loadCoupons(); loadStats(); loadComplaints(); }, []);
 
   const submitCoupon = async (e) => {
     e.preventDefault();
@@ -114,6 +121,7 @@ export default function Admin() {
       await api.patch(`/products/${id}/approval`, { approval_status });
       toast.success(approval_status === "approved" ? "Product approved · now live" : "Product rejected");
       loadProducts();
+      loadStats();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to update approval status");
     }
@@ -236,12 +244,20 @@ export default function Admin() {
         </button>
       </div>
 
-      <Tabs defaultValue="products">
+      <Tabs defaultValue="overview">
         <TabsList>
+          <TabsTrigger value="overview" data-testid="admin-tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="products" data-testid="admin-tab-products">Products</TabsTrigger>
           <TabsTrigger value="orders" data-testid="admin-tab-orders">Orders</TabsTrigger>
           <TabsTrigger value="coupons" data-testid="admin-tab-coupons">Coupons</TabsTrigger>
+          <TabsTrigger value="complaints" data-testid="admin-tab-complaints">
+            Complaints{stats?.open_complaints > 0 && ` (${stats.open_complaints})`}
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview" className="mt-6">
+          <SalesOverview stats={stats} />
+        </TabsContent>
 
         <TabsContent value="products" className="mt-6 grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-6">
           <form onSubmit={submit} className="bg-surface border border-warm rounded-lg p-5 space-y-3 h-fit" data-testid="admin-product-form">
@@ -481,7 +497,159 @@ export default function Admin() {
             </table>
           </div>
         </TabsContent>
+
+        <TabsContent value="complaints" className="mt-6">
+          <div className="bg-surface border border-warm rounded-lg p-5">
+            <h2 className="font-heading text-lg font-semibold mb-3">Complaints & issues ({complaints.length})</h2>
+            <div className="space-y-3">
+              {complaints.map((c) => (
+                <ComplaintRow key={c.id} complaint={c} onUpdated={() => { loadComplaints(); loadStats(); }} />
+              ))}
+              {complaints.length === 0 && (
+                <div className="py-8 text-center text-muted-warm flex flex-col items-center gap-2">
+                  <MessageSquareText size={20} />
+                  No complaints or issues raised yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+
+function StatCard({ icon: Icon, label, value, testId }) {
+  return (
+    <div className="bg-surface border border-warm rounded-lg p-5" data-testid={testId}>
+      <div className="flex items-center gap-2 text-muted-warm mb-2">
+        <Icon size={16} />
+        <span className="text-[11px] uppercase tracking-widest">{label}</span>
+      </div>
+      <div className="font-heading text-2xl font-semibold text-ink">{value}</div>
+    </div>
+  );
+}
+
+const ORDER_STATUS_LABELS = {
+  pending: "Pending", confirmed: "Confirmed", processing: "Processing",
+  shipped: "Shipped", delivered: "Delivered", cancelled: "Cancelled", payment_failed: "Payment failed",
+};
+
+function SalesOverview({ stats }) {
+  if (!stats) return <div className="text-muted-warm">Loading sales status…</div>;
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon={IndianRupee} label="Total revenue" value={`₹${stats.total_revenue.toFixed(2)}`} testId="admin-stat-revenue" />
+        <StatCard icon={ShoppingBag} label="Total orders" value={stats.total_orders} testId="admin-stat-orders" />
+        <StatCard icon={PackageCheck} label="Products pending review" value={stats.pending_products} testId="admin-stat-pending-products" />
+        <StatCard icon={AlertCircle} label="Open complaints" value={stats.open_complaints} testId="admin-stat-open-complaints" />
+        <StatCard icon={Store} label="Sellers" value={stats.total_sellers} testId="admin-stat-sellers" />
+        <StatCard icon={ShoppingBag} label="Customers" value={stats.total_customers} testId="admin-stat-customers" />
+        <StatCard icon={PackageCheck} label="Total products" value={stats.total_products} testId="admin-stat-products" />
+      </div>
+
+      <div className="bg-surface border border-warm rounded-lg p-5">
+        <h2 className="font-heading text-lg font-semibold mb-3">Orders by status</h2>
+        {Object.keys(stats.orders_by_status).length === 0 ? (
+          <div className="text-muted-warm text-sm">No orders yet.</div>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(stats.orders_by_status).map(([status, count]) => (
+              <div key={status} className="flex items-center gap-2 border border-warm rounded-full px-3 py-1.5 text-sm">
+                <span className="capitalize">{ORDER_STATUS_LABELS[status] || status}</span>
+                <span className="font-heading font-semibold text-ink">{count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const COMPLAINT_STATUS_OPTIONS = ["open", "in_progress", "resolved", "closed"];
+
+function complaintStatusBadgeClass(status) {
+  switch (status) {
+    case "resolved": return "bg-sage/15 text-sage border-sage/30";
+    case "in_progress": return "bg-blue-100 text-blue-700 border-blue-200";
+    case "closed": return "bg-parchment/60 text-ink border-warm";
+    default: return "bg-amber-100 text-amber-700 border-amber-200";
+  }
+}
+
+function ComplaintRow({ complaint, onUpdated }) {
+  const [status, setStatus] = useState(complaint.status || "open");
+  const [response, setResponse] = useState(complaint.admin_response || "");
+  const [saving, setSaving] = useState(false);
+  const dirty = status !== (complaint.status || "open") || response !== (complaint.admin_response || "");
+
+  const save = async () => {
+    if (!dirty) return;
+    setSaving(true);
+    try {
+      await api.patch(`/admin/complaints/${complaint.id}`, { status, admin_response: response });
+      toast.success("Issue updated");
+      onUpdated?.();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update issue");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="border border-warm rounded-lg p-4" data-testid={`admin-complaint-${complaint.id}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{complaint.subject}</span>
+            <span className="text-[9px] uppercase tracking-widest text-muted-warm border border-warm rounded-full px-1.5 py-0.5">{complaint.role}</span>
+          </div>
+          <div className="text-xs text-muted-warm mt-0.5">
+            {complaint.user_name} · {complaint.user_email} · {new Date(complaint.created_at).toLocaleString()}
+          </div>
+        </div>
+        <span className={`inline-block text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border ${complaintStatusBadgeClass(complaint.status)}`}>
+          {(complaint.status || "open").replace("_", " ")}
+        </span>
+      </div>
+      <p className="text-sm text-muted-warm mt-3 whitespace-pre-wrap">{complaint.message}</p>
+      {(complaint.order_id || complaint.product_id) && (
+        <div className="text-[11px] text-muted-warm mt-2">
+          {complaint.order_id && <span>Order: <span className="font-mono">{complaint.order_id}</span></span>}
+          {complaint.product_id && <span className="ml-3">Product: <span className="font-mono">{complaint.product_id}</span></span>}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-[180px_1fr_auto] gap-2 mt-3 items-start">
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger data-testid={`admin-complaint-status-${complaint.id}`} className="h-9 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {COMPLAINT_STATUS_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s} className="capitalize">{s.replace("_", " ")}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          data-testid={`admin-complaint-response-${complaint.id}`}
+          placeholder="Reply to the buyer/seller (optional)"
+          value={response}
+          onChange={(e) => setResponse(e.target.value)}
+          className="h-9 text-xs"
+        />
+        <button
+          onClick={save}
+          disabled={!dirty || saving}
+          data-testid={`admin-complaint-save-${complaint.id}`}
+          className="text-xs px-4 py-2 rounded bg-ink text-cream hover:bg-terracotta disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
     </div>
   );
 }

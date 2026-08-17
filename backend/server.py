@@ -1626,6 +1626,134 @@ async def admin_delete_coupon(coupon_id: str, _: dict = Depends(require_admin)):
     return {"ok": True}
 
 
+# ---------- Admin sales overview ----------
+NON_REVENUE_STATUSES = {"cancelled", "payment_failed"}
+
+
+@api_router.get("/admin/stats")
+async def admin_stats(_: dict = Depends(require_admin)):
+    total_orders = 0
+    total_revenue = 0.0
+    orders_by_status: dict = {}
+    async for o in db.orders.find({}, {"status": 1, "total": 1}):
+        total_orders += 1
+        status = o.get("status") or "pending"
+        orders_by_status[status] = orders_by_status.get(status, 0) + 1
+        if status not in NON_REVENUE_STATUSES:
+            total_revenue += float(o.get("total", 0) or 0)
+
+    total_products = await db.products.count_documents({})
+    pending_products = await db.products.count_documents({"approval_status": "pending"})
+    total_sellers = await db.users.count_documents({"role": "seller"})
+    total_customers = await db.users.count_documents({"role": "customer"})
+    open_complaints = await db.complaints.count_documents({"status": {"$in": ["open", "in_progress"]}})
+
+    return {
+        "total_orders": total_orders,
+        "total_revenue": round(total_revenue, 2),
+        "orders_by_status": orders_by_status,
+        "total_products": total_products,
+        "pending_products": pending_products,
+        "total_sellers": total_sellers,
+        "total_customers": total_customers,
+        "open_complaints": open_complaints,
+    }
+
+
+# ---------- Complaints / issues (raised by buyers & sellers) ----------
+COMPLAINT_STATUSES = ["open", "in_progress", "resolved", "closed"]
+
+
+class ComplaintIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=2000)
+    order_id: Optional[str] = None
+    product_id: Optional[str] = None
+
+
+class ComplaintStatusUpdate(BaseModel):
+    status: str
+    admin_response: str = ""
+
+
+def complaint_doc_to_out(doc: dict) -> dict:
+    return {
+        "id": str(doc["_id"]),
+        "user_id": doc.get("user_id", ""),
+        "user_name": doc.get("user_name", ""),
+        "user_email": doc.get("user_email", ""),
+        "role": doc.get("role", "customer"),
+        "subject": doc.get("subject", ""),
+        "message": doc.get("message", ""),
+        "order_id": doc.get("order_id"),
+        "product_id": doc.get("product_id"),
+        "status": doc.get("status", "open"),
+        "admin_response": doc.get("admin_response", ""),
+        "created_at": doc.get("created_at", ""),
+        "updated_at": doc.get("updated_at", doc.get("created_at", "")),
+    }
+
+
+@api_router.post("/complaints")
+async def create_complaint(payload: ComplaintIn, user: dict = Depends(get_current_user)):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "user_id": user["id"],
+        "user_name": user.get("name", ""),
+        "user_email": user.get("email", ""),
+        "role": user.get("role", "customer"),
+        "subject": payload.subject.strip(),
+        "message": payload.message.strip(),
+        "order_id": payload.order_id or None,
+        "product_id": payload.product_id or None,
+        "status": "open",
+        "admin_response": "",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    res = await db.complaints.insert_one(doc)
+    doc["_id"] = res.inserted_id
+    return complaint_doc_to_out(doc)
+
+
+@api_router.get("/complaints/mine")
+async def list_my_complaints(user: dict = Depends(get_current_user)):
+    cursor = db.complaints.find({"user_id": user["id"]}).sort([("created_at", -1)])
+    items = [complaint_doc_to_out(d) async for d in cursor]
+    return {"items": items}
+
+
+@api_router.get("/admin/complaints")
+async def admin_list_complaints(status: Optional[str] = None, _: dict = Depends(require_admin)):
+    query = {}
+    if status:
+        if status not in COMPLAINT_STATUSES:
+            raise HTTPException(status_code=400, detail=f"status must be one of {COMPLAINT_STATUSES}")
+        query["status"] = status
+    cursor = db.complaints.find(query).sort([("created_at", -1)])
+    items = [complaint_doc_to_out(d) async for d in cursor]
+    return {"items": items}
+
+
+@api_router.patch("/admin/complaints/{complaint_id}")
+async def admin_update_complaint(complaint_id: str, payload: ComplaintStatusUpdate, _: dict = Depends(require_admin)):
+    if payload.status not in COMPLAINT_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {COMPLAINT_STATUSES}")
+    try:
+        oid = ObjectId(complaint_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    doc = await db.complaints.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    update = {"status": payload.status, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if payload.admin_response:
+        update["admin_response"] = payload.admin_response
+    await db.complaints.update_one({"_id": oid}, {"$set": update})
+    doc.update(update)
+    return complaint_doc_to_out(doc)
+
+
 # ---------- Root ----------
 @api_router.get("/")
 async def root():
@@ -1652,6 +1780,8 @@ async def startup_event():
     await db.reviews.create_index([("product_id", 1), ("user_id", 1)], unique=True)
     await db.coupons.create_index("code", unique=True)
     await db.wishlists.create_index("user_id", unique=True)
+    await db.complaints.create_index("user_id")
+    await db.complaints.create_index("status")
     # TTL: MongoDB purges expired reset tokens automatically
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     # seed admin

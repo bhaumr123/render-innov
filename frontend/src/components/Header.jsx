@@ -117,6 +117,7 @@ export default function Header() {
                   {user.role === "admin" && (
                     <DropdownMenuItem asChild><Link to="/admin" data-testid="menu-admin">Admin panel</Link></DropdownMenuItem>
                   )}
+                  <DropdownMenuItem asChild><Link to="/support" data-testid="menu-support">Help & issues</Link></DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} data-testid="menu-logout">Sign out</DropdownMenuItem>
                 </>
