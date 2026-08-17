@@ -16,7 +16,8 @@ Render `host` reference — no manual URL editing required.
 
 1. **MongoDB Atlas** — you already provisioned this. Grab the `mongodb+srv://…` connection string with the DB user's password.
 2. **Razorpay keys** — Test keys are fine to start; swap to LIVE once KYC is approved.
-3. **GitHub repo** — push this codebase using the Emergent *Save to GitHub* button in the chat input.
+3. **Cloudinary account** — free tier is enough. Sign up at [cloudinary.com](https://cloudinary.com), then on your Dashboard copy the **API Environment variable** (it looks like `cloudinary://<key>:<secret>@<cloud_name>`). This is what stores seller product pictures and QR codes durably — without it, uploads fall back to local disk and are wiped on every Render redeploy.
+4. **GitHub repo** — push this codebase using the Emergent *Save to GitHub* button in the chat input.
 
 ---
 
@@ -41,7 +42,7 @@ For `iwi-backend`, Render will prompt for the env vars marked `sync: false`:
 | `RAZORPAY_KEY_ID` | From Razorpay Dashboard → Settings → API Keys |
 | `RAZORPAY_KEY_SECRET` | Same page |
 | `RAZORPAY_WEBHOOK_SECRET` | From Razorpay Dashboard → Webhooks (create after deploy) |
-| `CLOUDINARY_URL` | From [cloudinary.com](https://cloudinary.com) dashboard → "API Environment variable" (looks like `cloudinary://<key>:<secret>@<cloud_name>`). Powers seller product picture / QR code uploads. If left unset, uploads fall back to local disk, which Render does **not** persist across deploys on the free plan. |
+| `CLOUDINARY_URL` | The value you copied in Prerequisites step 3. Recommended — without it, seller uploads still work but don't survive a redeploy. |
 
 `JWT_SECRET` auto-generates on first deploy — no action needed.
 
@@ -64,6 +65,8 @@ curl https://iwi-backend.onrender.com/api/
 ```
 
 Open the frontend URL in a browser, register a user, add to cart, check out with mock card. Everything should work.
+
+To confirm the seller flow: go to **Register**, toggle **I'm a seller**, create an account, then on the **Seller dashboard** add a product with a picture and a QR code. If `CLOUDINARY_URL` is set, the uploaded image URL should point to `res.cloudinary.com` — open it directly to confirm it's reachable.
 
 ## Step 6 — Point `innovationwindowindia.com` at Render
 
@@ -100,3 +103,5 @@ Push to GitHub → Render auto-deploys both services. That's it.
 | Frontend loads but API 404s | The `REACT_APP_BACKEND_URL` env var was empty at build time. Trigger a manual **Clear build cache & deploy** on the frontend. |
 | CORS error in browser | Update `CORS_ORIGINS` on the backend to include the exact frontend URL (or your custom domain) with scheme. Redeploy. |
 | Razorpay webhook mismatch | `RAZORPAY_WEBHOOK_SECRET` in Render must match the value in Razorpay Dashboard exactly. |
+| Seller product picture / QR code disappears after a redeploy | `CLOUDINARY_URL` isn't set, so uploads fell back to local disk, which Render's free plan doesn't persist. Set `CLOUDINARY_URL` and re-upload. |
+| Seller upload returns "Image upload failed" | Check **iwi-backend → Logs** for the Cloudinary error — usually an invalid or expired `CLOUDINARY_URL`. Re-copy it from the Cloudinary Dashboard. |
