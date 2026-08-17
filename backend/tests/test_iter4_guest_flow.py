@@ -39,12 +39,15 @@ def product(admin):
 
 
 # ---------- Razorpay config ----------
-def test_razorpay_config_enabled():
+# Razorpay is disabled by default (RAZORPAY_ENABLED unset/false) — sellers are
+# paid directly via their own UPI QR code at checkout instead. Set
+# RAZORPAY_ENABLED=true (with real keys) to re-enable the gateway.
+def test_razorpay_config_disabled_by_default():
     r = requests.get(f"{API}/config/razorpay")
     assert r.status_code == 200
     d = r.json()
-    assert d.get("enabled") is True, f"Razorpay should be enabled, got {d}"
-    assert d.get("key_id"), "key_id should be non-empty"
+    assert d.get("enabled") is False, f"Razorpay should be disabled by default, got {d}"
+    assert d.get("key_id") == ""
 
 
 # ---------- Guest checkout (mock_card) ----------
@@ -124,8 +127,8 @@ def test_guest_lookup_success_and_wrong_email(product):
     assert bad.status_code == 404
 
 
-def test_guest_razorpay_create_returns_order_id(product):
-    """Should hit real Razorpay test API and return a rzp order id (keys are configured)."""
+def test_guest_razorpay_create_503_while_disabled(product):
+    """Razorpay is disabled by default (RAZORPAY_ENABLED unset/false)."""
     email = f"TEST_grzp_{uuid.uuid4().hex[:8]}@shop.com"
     payload = {
         "contact": {"name": "G", "email": email, "phone": "9999999999"},
@@ -134,17 +137,21 @@ def test_guest_razorpay_create_returns_order_id(product):
         "payment_method": "razorpay",
     }
     r = requests.post(f"{API}/orders/guest/create-razorpay", json=payload, timeout=30)
-    # Accept 200 (keys valid) or 502 (rzp API failed) — but NOT 503 (not configured)
-    assert r.status_code != 503, f"Razorpay reported not-configured: {r.text}"
-    if r.status_code == 200:
-        d = r.json()
-        assert d["razorpay_order_id"].startswith("order_")
-        assert d["currency"] == "INR"
-        assert d["amount"] > 0
-        assert "guest_access_token" in d
-        assert d["key_id"]
-    else:
-        pytest.skip(f"Razorpay upstream returned {r.status_code}: {r.text}")
+    assert r.status_code == 503, r.text
+
+
+def test_guest_checkout_seller_qr_accepted(product):
+    """seller_qr is a valid mock payment method (paired with the seller's uploaded QR code)."""
+    email = f"TEST_gqr_{uuid.uuid4().hex[:8]}@shop.com"
+    payload = {
+        "contact": {"name": "G", "email": email, "phone": "9999999999"},
+        "shipping_address": {"line1": "X", "city": "M", "state": "MH", "pincode": "400001"},
+        "items": [{"product_id": product, "quantity": 1}],
+        "payment_method": "seller_qr",
+    }
+    r = requests.post(f"{API}/orders/guest/checkout", json=payload, timeout=15)
+    assert r.status_code == 200, r.text
+    assert r.json()["payment_method"] == "seller_qr"
 
 
 # ---------- Cart merge (guest → authed) ----------

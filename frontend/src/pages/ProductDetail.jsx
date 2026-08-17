@@ -6,6 +6,7 @@ import { Leaf, Package, ShieldCheck, ChevronLeft, Star } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import Reviews from "@/components/Reviews";
+import SellerQrCard from "@/components/SellerQrCard";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -140,6 +141,17 @@ export default function ProductDetail() {
               Buy now
             </button>
           </div>
+
+          {p.qr_code_url && (
+            <div className="mt-6">
+              <SellerQrCard
+                qrUrl={p.qr_code_url}
+                title="Pay this seller directly via UPI"
+                subtitle={`Scan to pay for ${p.title}`}
+                testId="product-seller-qr"
+              />
+            </div>
+          )}
 
           <div className="mt-8 border-t border-warm pt-6 space-y-2 text-sm text-muted-warm">
             <div className="flex items-center gap-2"><Package size={14} className="text-sage" /> Flat ₹6.99 shipping · free above ₹75</div>

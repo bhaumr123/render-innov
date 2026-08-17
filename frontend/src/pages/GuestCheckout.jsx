@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
 import api, { formatApiError } from "@/lib/api";
@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { loadRazorpay } from "@/lib/razorpay";
 import { ChevronLeft } from "lucide-react";
+import SellerQrCard from "@/components/SellerQrCard";
 
 const EMPTY_ADDRESS = { line1: "", line2: "", city: "", state: "", pincode: "", country: "India" };
 const EMPTY_CONTACT = { name: "", email: "", phone: "" };
@@ -76,6 +77,17 @@ export default function GuestCheckout() {
   const shippingFee = discountedSubtotal === 0 ? 0 : (discountedSubtotal >= shippingCfg.free_threshold ? 0 : shippingCfg.flat_fee);
   const tax = +(discountedSubtotal * 0.05).toFixed(2);
   const total = +(discountedSubtotal + tax + shippingFee).toFixed(2);
+
+  // Distinct sellers in the cart that have uploaded a payment QR code.
+  const sellerQrs = useMemo(() => {
+    const seen = new Map();
+    for (const it of cart.items) {
+      const url = it.product?.qr_code_url;
+      if (!url || seen.has(url)) continue;
+      seen.set(url, it.product?.title || "this item");
+    }
+    return Array.from(seen, ([url, title]) => ({ url, title }));
+  }, [cart.items]);
 
   const applyCoupon = async () => {
     const code = couponInput.trim().toUpperCase();
@@ -259,22 +271,29 @@ export default function GuestCheckout() {
         <div className="bg-surface border border-warm rounded-lg p-6">
           <h2 className="font-heading text-lg font-semibold mb-4">4 · Payment</h2>
           <RadioGroup value={payment} onValueChange={setPayment} className="space-y-2">
-            <label className={`flex items-center gap-3 border rounded-md p-3 cursor-pointer bg-cream/40 transition-colors ${razorpayCfg.enabled ? "border-warm hover:border-terracotta" : "border-warm opacity-60"}`}>
-              <RadioGroupItem value="razorpay" data-testid="guest-pay-razorpay" disabled={!razorpayCfg.enabled} />
+            <label className={`flex items-center gap-3 border rounded-md p-3 cursor-pointer bg-cream/40 transition-colors ${sellerQrs.length > 0 ? "border-warm hover:border-terracotta" : "border-warm opacity-60"}`}>
+              <RadioGroupItem value="seller_qr" data-testid="guest-pay-seller-qr" disabled={sellerQrs.length === 0} />
               <div className="flex-1">
                 <div className="font-medium flex items-center gap-2">
-                  Razorpay · UPI / Cards / Netbanking
-                  {razorpayCfg.enabled ? (
+                  Scan & pay seller UPI QR
+                  {sellerQrs.length > 0 ? (
                     <span className="text-[10px] uppercase tracking-widest text-sage bg-sage/10 border border-sage/30 rounded-full px-2 py-0.5">Recommended</span>
                   ) : (
-                    <span className="text-[10px] uppercase tracking-widest text-muted-warm bg-warm/40 border border-warm rounded-full px-2 py-0.5">Setup required</span>
+                    <span className="text-[10px] uppercase tracking-widest text-muted-warm bg-warm/40 border border-warm rounded-full px-2 py-0.5">Unavailable</span>
                   )}
                 </div>
                 <div className="text-xs text-muted-warm">
-                  {razorpayCfg.enabled ? "Secure. Test card 4111 1111 1111 1111." : "Ask admin to configure Razorpay."}
+                  {sellerQrs.length > 0 ? "Scan the seller's QR code with any UPI app, then place your order." : "No sellers in your cart have added a QR code yet."}
                 </div>
               </div>
             </label>
+            {payment === "seller_qr" && sellerQrs.length > 0 && (
+              <div className="pl-9 space-y-2">
+                {sellerQrs.map((s) => (
+                  <SellerQrCard key={s.url} qrUrl={s.url} title="Scan & pay via UPI" subtitle={s.title} testId={`guest-seller-qr-${s.url}`} />
+                ))}
+              </div>
+            )}
             <label className="flex items-center gap-3 border border-warm rounded-md p-3 cursor-pointer bg-cream/40 hover:border-terracotta transition-colors">
               <RadioGroupItem value="mock_card" data-testid="guest-pay-card" />
               <div className="flex-1">
@@ -287,6 +306,20 @@ export default function GuestCheckout() {
               <div className="flex-1">
                 <div className="font-medium">Cash on delivery</div>
                 <div className="text-xs text-muted-warm">Pay when your order arrives.</div>
+              </div>
+            </label>
+            <label className={`flex items-center gap-3 border rounded-md p-3 cursor-pointer bg-cream/40 transition-colors ${razorpayCfg.enabled ? "border-warm hover:border-terracotta" : "border-warm opacity-60"}`}>
+              <RadioGroupItem value="razorpay" data-testid="guest-pay-razorpay" disabled={!razorpayCfg.enabled} />
+              <div className="flex-1">
+                <div className="font-medium flex items-center gap-2">
+                  Razorpay · UPI / Cards / Netbanking
+                  {!razorpayCfg.enabled && (
+                    <span className="text-[10px] uppercase tracking-widest text-muted-warm bg-warm/40 border border-warm rounded-full px-2 py-0.5">Currently disabled</span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-warm">
+                  {razorpayCfg.enabled ? "Secure. Test card 4111 1111 1111 1111." : "Disabled for now — sellers are paid directly via their UPI QR code above."}
+                </div>
               </div>
             </label>
           </RadioGroup>
@@ -368,10 +401,17 @@ export default function GuestCheckout() {
           data-testid="guest-place-order"
           className="w-full bg-terracotta text-white text-sm font-medium rounded-full py-3 hover:brightness-95 transition-colors disabled:opacity-50"
         >
-          {placing ? "Processing…" : (payment === "razorpay" ? `Pay ₹${total.toFixed(2)} securely` : "Place order")}
+          {placing
+            ? "Processing…"
+            : payment === "razorpay"
+            ? `Pay ₹${total.toFixed(2)} securely`
+            : payment === "seller_qr"
+            ? "I've paid — place order"
+            : "Place order"}
         </button>
         <div className="text-[11px] text-muted-warm mt-3">
           By placing your order you agree to our terms. A confirmation and tracking link will be sent to your email.
+          {payment === "seller_qr" && " Make sure you've completed the UPI payment before placing your order."}
         </div>
       </aside>
     </div>

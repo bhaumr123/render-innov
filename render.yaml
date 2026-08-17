@@ -31,6 +31,8 @@ services:
         value: admin@innovationwindowindia.com
       - key: ADMIN_PASSWORD            # rotate after first login
         sync: false
+      - key: RAZORPAY_ENABLED             # "true" to re-enable Razorpay; sellers use QR-code payments while unset/false
+        value: "false"
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET

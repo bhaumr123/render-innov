@@ -88,7 +88,15 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
 
 
 # ---------- Razorpay ----------
+# Disabled by default: sellers currently get paid via their own UPI QR code
+# shown at checkout instead of a payment gateway. Set RAZORPAY_ENABLED=true
+# (plus RAZORPAY_KEY_ID/SECRET) to bring the gateway back.
+RAZORPAY_ENABLED = os.environ.get("RAZORPAY_ENABLED", "false").lower() == "true"
+
+
 def get_razorpay_client() -> Optional["razorpay.Client"]:
+    if not RAZORPAY_ENABLED:
+        return None
     key_id = os.environ.get("RAZORPAY_KEY_ID", "")
     key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
     if not key_id or not key_secret:
@@ -849,7 +857,8 @@ class RazorpayVerifyInput(BaseModel):
 @api_router.get("/config/razorpay")
 async def get_razorpay_public_config():
     key_id = os.environ.get("RAZORPAY_KEY_ID", "")
-    return {"key_id": key_id, "enabled": bool(key_id and os.environ.get("RAZORPAY_KEY_SECRET"))}
+    enabled = RAZORPAY_ENABLED and bool(key_id and os.environ.get("RAZORPAY_KEY_SECRET"))
+    return {"key_id": key_id if enabled else "", "enabled": enabled}
 
 
 @api_router.post("/orders/create-razorpay")
@@ -1011,7 +1020,7 @@ class GuestCheckoutInput(BaseModel):
     billing_same_as_shipping: bool = True
     billing_address: Optional[GuestAddress] = None
     items: List[GuestCartItem]
-    payment_method: str = "mock_card"  # "mock_card" | "mock_cod" | "razorpay"
+    payment_method: str = "mock_card"  # "mock_card" | "mock_cod" | "seller_qr" | "razorpay"
     coupon_code: str = ""
 
 
@@ -1073,7 +1082,7 @@ async def guest_checkout(payload: GuestCheckoutInput):
     """Guest checkout for mock_card / mock_cod (no real payment)."""
     if not payload.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
-    if payload.payment_method not in ("mock_card", "mock_cod"):
+    if payload.payment_method not in ("mock_card", "mock_cod", "seller_qr"):
         raise HTTPException(status_code=400, detail="Use /orders/guest/create-razorpay for Razorpay payments")
 
     priced = await _price_guest_items(payload.items)
@@ -1369,6 +1378,8 @@ async def top_reviews(limit: int = 20):
 
 @api_router.post("/webhooks/razorpay")
 async def razorpay_webhook(request: Request):
+    if not RAZORPAY_ENABLED:
+        raise HTTPException(status_code=503, detail="Razorpay integration is currently disabled")
     secret = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
     if not secret:
         raise HTTPException(status_code=503, detail="Webhook secret not configured")
