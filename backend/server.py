@@ -826,6 +826,38 @@ async def delete_product(product_id: str, user: dict = Depends(require_seller)):
     return {"ok": True}
 
 
+class StockUpdateInput(BaseModel):
+    stock: Optional[int] = None  # base stock — set this when the product has no size variants
+    variant_label: Optional[str] = None
+    variant_stock: Optional[int] = None  # set together with variant_label to restock one size
+
+
+@api_router.patch("/products/{product_id}/stock")
+async def update_product_stock(product_id: str, payload: StockUpdateInput, user: dict = Depends(require_seller)):
+    """Quick inventory edit — just the stock number(s), without resubmitting
+    the whole product. Used by the admin Inventory panel (and available to a
+    seller for their own listings, same ownership rule as every other
+    /products/{id} write)."""
+    oid = await _get_owned_product(product_id, user)
+    if payload.variant_label:
+        if payload.variant_stock is None or payload.variant_stock < 0:
+            raise HTTPException(status_code=400, detail="variant_stock must be a non-negative number")
+        res = await db.products.update_one(
+            {"_id": oid, "size_variants.label": payload.variant_label},
+            {"$set": {"size_variants.$.stock": payload.variant_stock}},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Size variant not found")
+    elif payload.stock is not None:
+        if payload.stock < 0:
+            raise HTTPException(status_code=400, detail="stock must be a non-negative number")
+        await db.products.update_one({"_id": oid}, {"$set": {"stock": payload.stock}})
+    else:
+        raise HTTPException(status_code=400, detail="Provide stock, or variant_label with variant_stock")
+    doc = await db.products.find_one({"_id": oid})
+    return product_doc_to_out(doc)
+
+
 # ---------- Cart ----------
 async def _get_cart_items(user_id: str) -> List[dict]:
     cart = await db.carts.find_one({"user_id": user_id})
@@ -873,6 +905,106 @@ def _compute_gst(items: List[dict]) -> float:
         float(it.get("price", 0)) * int(it.get("quantity", 0)) * (float(it.get("gst_rate") or 5) / 100.0)
         for it in items
     ), 2)
+
+
+# ---------- Inventory ----------
+def _effective_stock(prod: Optional[dict], variant_label: str) -> int:
+    """Stock for the specific size variant the buyer picked, else the
+    product's base stock."""
+    if not prod:
+        return 0
+    if variant_label:
+        for v in prod.get("size_variants", []) or []:
+            if v.get("label") == variant_label:
+                return int(v.get("stock", 0))
+        return 0  # that variant no longer exists on the product
+    return int(prod.get("stock", 0))
+
+
+async def _release_stock_raw(reserved: List[tuple]):
+    for oid, variant_label, qty in reserved:
+        if qty <= 0:
+            continue
+        if variant_label:
+            await db.products.update_one(
+                {"_id": oid, "size_variants.label": variant_label},
+                {"$inc": {"size_variants.$.stock": qty}},
+            )
+        else:
+            await db.products.update_one({"_id": oid}, {"$inc": {"stock": qty}})
+
+
+async def _reserve_stock(order_items: List[dict]) -> List[dict]:
+    """Atomically decrement stock for each line item so two concurrent
+    checkouts can't oversell the same unit — each decrement is conditioned
+    on there being enough stock left, in the same update. Returns a list of
+    conflicts for items that couldn't be reserved (out of stock, not enough
+    left, or the product/variant no longer exists); anything already
+    reserved before a conflict was hit is rolled back so a failed checkout
+    never leaves inventory short."""
+    reserved: List[tuple] = []
+    conflicts: List[dict] = []
+    for it in order_items:
+        qty = int(it.get("quantity", 0))
+        variant_label = it.get("variant_label", "")
+        try:
+            oid = ObjectId(it["product_id"])
+        except Exception:
+            conflicts.append({
+                "product_id": it.get("product_id", ""), "title": it.get("title", ""),
+                "variant_label": variant_label, "requested": qty, "available": 0,
+                "reason": "Product not found",
+            })
+            continue
+
+        if variant_label:
+            res = await db.products.find_one_and_update(
+                {"_id": oid, "size_variants": {"$elemMatch": {"label": variant_label, "stock": {"$gte": qty}}}},
+                {"$inc": {"size_variants.$.stock": -qty}},
+            )
+        else:
+            res = await db.products.find_one_and_update(
+                {"_id": oid, "stock": {"$gte": qty}},
+                {"$inc": {"stock": -qty}},
+            )
+
+        if res is None:
+            prod = await db.products.find_one({"_id": oid})
+            available = _effective_stock(prod, variant_label)
+            conflicts.append({
+                "product_id": it.get("product_id", ""),
+                "title": it.get("title") or (prod.get("title") if prod else ""),
+                "variant_label": variant_label,
+                "requested": qty,
+                "available": available,
+                "reason": "Out of stock" if available <= 0 else "Not enough stock left",
+            })
+        else:
+            reserved.append((oid, variant_label, qty))
+
+    if conflicts and reserved:
+        await _release_stock_raw(reserved)
+    return conflicts
+
+
+async def _release_stock(order_items: List[dict]):
+    """Restore stock for an order's line items — e.g. when an order (or one
+    seller's part of it) is cancelled."""
+    pairs = []
+    for it in order_items:
+        try:
+            oid = ObjectId(it["product_id"])
+        except Exception:
+            continue
+        pairs.append((oid, it.get("variant_label", ""), int(it.get("quantity", 0))))
+    await _release_stock_raw(pairs)
+
+
+def _stock_conflict_response(conflicts: List[dict]) -> HTTPException:
+    return HTTPException(status_code=409, detail={
+        "message": "Some items in your cart are no longer available in the quantity you selected.",
+        "items": conflicts,
+    })
 
 
 @api_router.get("/config/shipping")
@@ -1184,6 +1316,10 @@ async def checkout(payload: CheckoutInput, user: dict = Depends(get_current_user
     tax = _compute_gst(order_items)
     total = round(subtotal + tax + shipping, 2)
 
+    conflicts = await _reserve_stock(order_items)
+    if conflicts:
+        raise _stock_conflict_response(conflicts)
+
     order = {
         "user_id": user["id"],
         "items": order_items,
@@ -1288,6 +1424,11 @@ async def admin_update_order_status(order_id: str, payload: OrderStatusUpdate, _
             event["note"] = f"Shipped via {payload.carrier or 'courier'} · {payload.tracking_number}"
     if payload.status == "delivered":
         set_fields["delivered_at"] = now_iso
+    if payload.status == "cancelled" and existing.get("status") != "cancelled" and not existing.get("stock_released"):
+        # Return the whole order's reserved stock to inventory — once, guarded
+        # by stock_released so a repeat cancel call can't double-restock.
+        await _release_stock(existing.get("items", []))
+        set_fields["stock_released"] = True
 
     await db.orders.update_one(
         {"_id": oid},
@@ -1367,6 +1508,15 @@ async def seller_update_order_status(order_id: str, payload: SellerOrderStatusUp
         event["note"] = f"Shipped via {payload.carrier or 'courier'} · {payload.tracking_number}"
     if payload.carrier:
         set_fields[f"seller_status.{seller_id}.carrier"] = payload.carrier
+
+    existing_seller_status = (order_doc.get("seller_status") or {}).get(seller_id, {})
+    if payload.status == "cancelled" and existing_seller_status.get("status") != "cancelled" and not existing_seller_status.get("stock_released"):
+        # Only this seller's own line items go back to inventory — the rest
+        # of a multi-vendor order is unaffected. Guarded so a repeat cancel
+        # can't double-restock.
+        seller_items = [it for it in order_doc.get("items", []) if it.get("seller_id") == seller_id]
+        await _release_stock(seller_items)
+        set_fields[f"seller_status.{seller_id}.stock_released"] = True
 
     await db.orders.update_one(
         {"_id": oid},
@@ -1455,6 +1605,11 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
         "sellers": await _sellers_snapshot(razorpay_items),
         "seller_status": _initial_seller_status(razorpay_items, "pending"),
     }
+
+    conflicts = await _reserve_stock(razorpay_items)
+    if conflicts:
+        raise _stock_conflict_response(conflicts)
+
     res = await db.orders.insert_one(order)
     our_order_id = str(res.inserted_id)
 
@@ -1468,6 +1623,7 @@ async def create_razorpay_order(payload: RazorpayCreateInput, user: dict = Depen
         })
     except Exception as e:
         await db.orders.delete_one({"_id": res.inserted_id})
+        await _release_stock(razorpay_items)
         raise HTTPException(status_code=502, detail=f"Razorpay order creation failed: {str(e)}")
 
     await db.orders.update_one({"_id": res.inserted_id},
@@ -1494,11 +1650,13 @@ async def verify_razorpay(payload: RazorpayVerifyInput, user: dict = Depends(get
     body = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}".encode("utf-8")
     expected = hmac.new(key_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, payload.razorpay_signature):
-        # mark failed
+        # mark failed and return the stock it had reserved
         try:
             oid = ObjectId(payload.order_id)
-            await db.orders.update_one({"_id": oid, "user_id": user["id"]},
-                                       {"$set": {"status": "payment_failed"}})
+            failed_order = await db.orders.find_one({"_id": oid, "user_id": user["id"]})
+            if failed_order and not failed_order.get("stock_released"):
+                await _release_stock(failed_order.get("items", []))
+                await db.orders.update_one({"_id": oid}, {"$set": {"status": "payment_failed", "stock_released": True}})
         except Exception:
             pass
         raise HTTPException(status_code=400, detail="Invalid payment signature")
@@ -1659,6 +1817,10 @@ async def guest_checkout(payload: GuestCheckoutInput):
     order["sellers"] = await _sellers_snapshot(priced)
     order["seller_status"] = _initial_seller_status(priced, "confirmed")
 
+    conflicts = await _reserve_stock(priced)
+    if conflicts:
+        raise _stock_conflict_response(conflicts)
+
     res = await db.orders.insert_one(order)
     if order["coupon_code"]:
         await db.coupons.update_one({"code": order["coupon_code"]}, {"$inc": {"uses": 1}})
@@ -1702,6 +1864,10 @@ async def guest_create_razorpay(payload: GuestCheckoutInput):
     order["sellers"] = await _sellers_snapshot(priced)
     order["seller_status"] = _initial_seller_status(priced, "pending")
 
+    conflicts = await _reserve_stock(priced)
+    if conflicts:
+        raise _stock_conflict_response(conflicts)
+
     res = await db.orders.insert_one(order)
     our_order_id = str(res.inserted_id)
     amount_paise = int(round(order["total"] * 100))
@@ -1715,6 +1881,7 @@ async def guest_create_razorpay(payload: GuestCheckoutInput):
         })
     except Exception as e:
         await db.orders.delete_one({"_id": res.inserted_id})
+        await _release_stock(priced)
         raise HTTPException(status_code=502, detail=f"Razorpay order creation failed: {str(e)}")
 
     await db.orders.update_one({"_id": res.inserted_id},
@@ -1757,7 +1924,11 @@ async def guest_verify_razorpay(payload: GuestVerifyInput):
     body = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}".encode("utf-8")
     expected = hmac.new(key_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, payload.razorpay_signature):
-        await db.orders.update_one({"_id": oid}, {"$set": {"status": "payment_failed"}})
+        if not o.get("stock_released"):
+            await _release_stock(o.get("items", []))
+            await db.orders.update_one({"_id": oid}, {"$set": {"status": "payment_failed", "stock_released": True}})
+        else:
+            await db.orders.update_one({"_id": oid}, {"$set": {"status": "payment_failed"}})
         raise HTTPException(status_code=400, detail="Invalid payment signature")
 
     now = datetime.now(timezone.utc).isoformat()

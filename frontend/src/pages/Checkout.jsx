@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { loadRazorpay } from "@/lib/razorpay";
 import SellerQrCard from "@/components/SellerQrCard";
+import StockConflictNotice from "@/components/StockConflictNotice";
 
 export default function Checkout() {
-  const { cart, refresh } = useCart();
+  const { cart, refresh, updateQty, removeItem } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [address, setAddress] = useState({
@@ -19,6 +20,7 @@ export default function Checkout() {
   });
   const [payment, setPayment] = useState("mock_card");
   const [placing, setPlacing] = useState(false);
+  const [stockConflicts, setStockConflicts] = useState([]);
   const [shippingCfg, setShippingCfg] = useState({ flat_fee: 6.99, free_threshold: 75 });
   const [razorpayCfg, setRazorpayCfg] = useState({ enabled: false, key_id: "" });
   const [couponInput, setCouponInput] = useState("");
@@ -85,6 +87,30 @@ export default function Checkout() {
     return true;
   };
 
+  // A 409 here means the checkout-time inventory check found one or more
+  // items no longer available in the requested quantity — surface exactly
+  // which ones, and let the buyer adjust right on this page.
+  const handleOrderError = async (e, fallbackMsg) => {
+    const detail = e.response?.data?.detail;
+    if (e.response?.status === 409 && Array.isArray(detail?.items)) {
+      setStockConflicts(detail.items);
+      toast.error(detail.message || "Some items are no longer available in that quantity.");
+      await refresh();
+    } else {
+      toast.error(formatApiErrorDetail(detail) || fallbackMsg);
+    }
+  };
+
+  const adjustConflict = async (c) => {
+    await updateQty(c.product_id, c.available, c.variant_label);
+    setStockConflicts((prev) => prev.filter((x) => !(x.product_id === c.product_id && x.variant_label === c.variant_label)));
+  };
+
+  const removeConflict = async (c) => {
+    await removeItem(c.product_id, c.variant_label);
+    setStockConflicts((prev) => prev.filter((x) => !(x.product_id === c.product_id && x.variant_label === c.variant_label)));
+  };
+
   const placeMockOrder = async () => {
     setPlacing(true);
     try {
@@ -97,7 +123,7 @@ export default function Checkout() {
       toast.success("Order placed · thank you!");
       navigate(`/order-confirmation/${data.id}`, { state: { order: data } });
     } catch (e) {
-      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Failed to place order");
+      await handleOrderError(e, "Failed to place order");
     } finally {
       setPlacing(false);
     }
@@ -163,13 +189,14 @@ export default function Checkout() {
       });
       rzp.open();
     } catch (e) {
-      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Could not start payment");
+      await handleOrderError(e, "Could not start payment");
       setPlacing(false);
     }
   };
 
   const placeOrder = async () => {
     if (!validate()) return;
+    setStockConflicts([]);
     if (payment === "razorpay") {
       await placeRazorpayOrder();
     } else {
@@ -276,6 +303,11 @@ export default function Checkout() {
 
         <div className="bg-surface border border-warm rounded-lg p-6">
           <h2 className="font-heading text-lg font-semibold mb-4">3 · Review items</h2>
+          {stockConflicts.length > 0 && (
+            <div className="mb-4">
+              <StockConflictNotice conflicts={stockConflicts} onAdjust={adjustConflict} onRemove={removeConflict} testIdPrefix="chk-stock" />
+            </div>
+          )}
           <ul className="divide-y divide-warm">
             {cart.items.map((it) => {
               const key = `${it.product_id}::${it.variant_label || ""}`;

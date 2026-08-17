@@ -13,6 +13,15 @@ export default function Cart() {
     api.get("/config/shipping").then((r) => setShippingCfg(r.data));
   }, []);
 
+  const availableStock = (it) => {
+    if (!it.product) return 0;
+    if (it.variant_label) {
+      const v = (it.product.size_variants || []).find((sv) => sv.label === it.variant_label);
+      return v ? Number(v.stock) : 0;
+    }
+    return Number(it.product.stock);
+  };
+
   const shipping = cart.subtotal === 0 ? 0 : (cart.subtotal >= shippingCfg.free_threshold ? 0 : shippingCfg.flat_fee);
   // Each product carries its own GST rate (5% or 18%) set by its seller —
   // sum per line item rather than applying one flat rate to the cart.
@@ -42,6 +51,8 @@ export default function Cart() {
           <ul className="mt-6 divide-y divide-warm">
             {cart.items.map((it) => {
               const key = `${it.product_id}::${it.variant_label || ""}`;
+              const stock = availableStock(it);
+              const short = it.quantity > stock;
               return (
                 <li key={key} className="py-5 flex gap-4" data-testid={`cart-item-${it.product_id}`}>
                   <Link to={`/product/${it.product_id}`} className="w-24 h-24 shrink-0 bg-parchment/40 border border-warm rounded flex items-center justify-center">
@@ -55,6 +66,11 @@ export default function Cart() {
                       {it.product?.category}
                       {it.variant_label && <> · <span className="text-ink">{it.variant_label}</span></>}
                     </div>
+                    {short && (
+                      <div className="text-xs text-terracotta mt-1" data-testid={`cart-stock-warning-${it.product_id}`}>
+                        {stock > 0 ? `Only ${stock} left in stock` : "Out of stock"}
+                      </div>
+                    )}
                     <div className="mt-3 flex items-center gap-3">
                       <div className="inline-flex items-center border border-warm rounded-full bg-cream">
                         <button

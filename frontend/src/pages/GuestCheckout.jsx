@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { loadRazorpay } from "@/lib/razorpay";
 import { ChevronLeft } from "lucide-react";
 import SellerQrCard from "@/components/SellerQrCard";
+import StockConflictNotice from "@/components/StockConflictNotice";
 
 const EMPTY_ADDRESS = { line1: "", line2: "", city: "", state: "", pincode: "", country: "India" };
 const EMPTY_CONTACT = { name: "", email: "", phone: "" };
@@ -47,7 +48,7 @@ function AddressFields({ prefix, value, onChange, testIdPrefix }) {
 }
 
 export default function GuestCheckout() {
-  const { cart, refresh } = useCart();
+  const { cart, refresh, updateQty, removeItem } = useCart();
   const navigate = useNavigate();
 
   const [contact, setContact] = useState(EMPTY_CONTACT);
@@ -56,6 +57,7 @@ export default function GuestCheckout() {
   const [billing, setBilling] = useState(EMPTY_ADDRESS);
   const [payment, setPayment] = useState("mock_card");
   const [placing, setPlacing] = useState(false);
+  const [stockConflicts, setStockConflicts] = useState([]);
   const [shippingCfg, setShippingCfg] = useState({ flat_fee: 6.99, free_threshold: 75 });
   const [razorpayCfg, setRazorpayCfg] = useState({ enabled: false, key_id: "" });
   const [couponInput, setCouponInput] = useState("");
@@ -138,6 +140,30 @@ export default function GuestCheckout() {
     navigate(`/order-confirmation/${orderId}?t=${encodeURIComponent(token)}`);
   };
 
+  // A 409 here means the checkout-time inventory check found one or more
+  // items no longer available in the requested quantity — surface exactly
+  // which ones, and let the guest adjust right on this page.
+  const handleOrderError = async (e) => {
+    const detail = e.response?.data?.detail;
+    if (e.response?.status === 409 && Array.isArray(detail?.items)) {
+      setStockConflicts(detail.items);
+      toast.error(detail.message || "Some items are no longer available in that quantity.");
+      await refresh();
+    } else {
+      toast.error(formatApiError(e));
+    }
+  };
+
+  const adjustConflict = async (c) => {
+    await updateQty(c.product_id, c.available, c.variant_label);
+    setStockConflicts((prev) => prev.filter((x) => !(x.product_id === c.product_id && x.variant_label === c.variant_label)));
+  };
+
+  const removeConflict = async (c) => {
+    await removeItem(c.product_id, c.variant_label);
+    setStockConflicts((prev) => prev.filter((x) => !(x.product_id === c.product_id && x.variant_label === c.variant_label)));
+  };
+
   const placeMock = async () => {
     setPlacing(true);
     try {
@@ -149,7 +175,7 @@ export default function GuestCheckout() {
       await refresh();
       goToConfirmation(data.id, data.guest_access_token);
     } catch (e) {
-      toast.error(formatApiError(e));
+      await handleOrderError(e);
     } finally {
       setPlacing(false);
     }
@@ -200,13 +226,14 @@ export default function GuestCheckout() {
       rzp.on("payment.failed", (r) => { toast.error(r.error?.description || "Payment failed"); setPlacing(false); });
       rzp.open();
     } catch (e) {
-      toast.error(formatApiError(e));
+      await handleOrderError(e);
       setPlacing(false);
     }
   };
 
   const place = () => {
     if (!validate()) return;
+    setStockConflicts([]);
     if (payment === "razorpay") placeRazorpay();
     else placeMock();
   };
@@ -330,6 +357,11 @@ export default function GuestCheckout() {
         {/* Review items */}
         <div className="bg-surface border border-warm rounded-lg p-6">
           <h2 className="font-heading text-lg font-semibold mb-4">5 · Review items</h2>
+          {stockConflicts.length > 0 && (
+            <div className="mb-4">
+              <StockConflictNotice conflicts={stockConflicts} onAdjust={adjustConflict} onRemove={removeConflict} testIdPrefix="guest-stock" />
+            </div>
+          )}
           {cart.items.length === 0 ? (
             <div className="text-sm text-muted-warm">Your cart is empty. <Link to="/products" className="text-terracotta hover:underline">Continue shopping →</Link></div>
           ) : (

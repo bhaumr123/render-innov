@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import api, { resolveUploadUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,26 @@ import {
 // Fallback shown before /products/categories responds; the live list (server's
 // canonical taxonomy plus any legacy category strings) replaces this on load.
 const FALLBACK_CATEGORIES = ["Herbal Tea", "Grocery", "Super Foods", "Artisanal Goods", "Spiritual", "Medicinal Roots"];
+
+const LOW_STOCK_THRESHOLD = 10;
+
+// Flatten each product into one inventory row per sellable unit — its base
+// stock if it has no size variants, or one row per variant otherwise —
+// since stock (and therefore "is this actually available") is tracked at
+// that level, not the product as a whole.
+function buildInventoryRows(products) {
+  const rows = [];
+  for (const p of products) {
+    if (p.size_variants?.length) {
+      for (const v of p.size_variants) {
+        rows.push({ key: `${p.id}::${v.label}`, product: p, variantLabel: v.label, stock: Number(v.stock) || 0 });
+      }
+    } else {
+      rows.push({ key: p.id, product: p, variantLabel: null, stock: Number(p.stock) || 0 });
+    }
+  }
+  return rows.sort((a, b) => a.stock - b.stock);
+}
 
 const emptyForm = {
   title: "", description: "", price: "", category: "Herbal Tea",
@@ -340,6 +360,9 @@ export default function Admin() {
     loadProducts();
   };
 
+  const inventoryRows = useMemo(() => buildInventoryRows(products), [products]);
+  const inventoryAlerts = inventoryRows.filter((r) => r.stock <= LOW_STOCK_THRESHOLD).length;
+
   return (
     <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-8">
       <div className="flex items-center justify-between mb-6">
@@ -360,6 +383,9 @@ export default function Admin() {
         <TabsList>
           <TabsTrigger value="overview" data-testid="admin-tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="products" data-testid="admin-tab-products">Products</TabsTrigger>
+          <TabsTrigger value="inventory" data-testid="admin-tab-inventory">
+            Inventory{inventoryAlerts > 0 && ` (${inventoryAlerts})`}
+          </TabsTrigger>
           <TabsTrigger value="orders" data-testid="admin-tab-orders">Orders</TabsTrigger>
           <TabsTrigger value="sellers" data-testid="admin-tab-sellers">Sellers</TabsTrigger>
           <TabsTrigger value="coupons" data-testid="admin-tab-coupons">Coupons</TabsTrigger>
@@ -514,6 +540,10 @@ export default function Admin() {
               </table>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="inventory" className="mt-6">
+          <InventoryPanel rows={inventoryRows} onUpdated={loadProducts} />
         </TabsContent>
 
         <TabsContent value="orders" className="mt-6">
@@ -918,6 +948,127 @@ function AdminOrderRow({ order, onUpdated }) {
         </div>
       </td>
       <td className="text-xs">{new Date(order.created_at).toLocaleString()}</td>
+    </tr>
+  );
+}
+
+function stockBadge(stock) {
+  if (stock <= 0) return { label: "Out of stock", className: "bg-red-100 text-red-700 border-red-200" };
+  if (stock <= LOW_STOCK_THRESHOLD) return { label: "Low stock", className: "bg-amber-100 text-amber-700 border-amber-200" };
+  return { label: "In stock", className: "bg-sage/15 text-sage border-sage/30" };
+}
+
+function InventoryPanel({ rows, onUpdated }) {
+  const outOfStock = rows.filter((r) => r.stock <= 0).length;
+  const lowStock = rows.filter((r) => r.stock > 0 && r.stock <= LOW_STOCK_THRESHOLD).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-surface border border-warm rounded-lg p-4">
+          <div className="text-[11px] uppercase tracking-widest text-muted-warm">Tracked units</div>
+          <div className="font-heading text-2xl font-semibold mt-1">{rows.length}</div>
+        </div>
+        <div className={`border rounded-lg p-4 ${lowStock > 0 ? "bg-amber-50 border-amber-200" : "bg-surface border-warm"}`}>
+          <div className="text-[11px] uppercase tracking-widest text-muted-warm">Low stock (≤{LOW_STOCK_THRESHOLD})</div>
+          <div className="font-heading text-2xl font-semibold mt-1 text-amber-700">{lowStock}</div>
+        </div>
+        <div className={`border rounded-lg p-4 ${outOfStock > 0 ? "bg-red-50 border-red-200" : "bg-surface border-warm"}`}>
+          <div className="text-[11px] uppercase tracking-widest text-muted-warm">Out of stock</div>
+          <div className="font-heading text-2xl font-semibold mt-1 text-red-700">{outOfStock}</div>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-warm rounded-lg p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-heading text-lg font-semibold">Inventory ({rows.length})</h2>
+          <div className="text-xs text-muted-warm">Lowest stock first — this decides what shows out of stock at checkout.</div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-warm text-left text-[11px] uppercase tracking-widest text-muted-warm">
+                <th className="py-2">Product</th>
+                <th>Size</th>
+                <th>Category</th>
+                <th>Stock</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => <InventoryRow key={r.key} row={r} onUpdated={onUpdated} />)}
+              {rows.length === 0 && (
+                <tr><td colSpan={5} className="py-8 text-center text-muted-warm">No products yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InventoryRow({ row, onUpdated }) {
+  const { product: p, variantLabel, stock } = row;
+  const [value, setValue] = useState(String(stock));
+  const [saving, setSaving] = useState(false);
+  const dirty = value !== "" && Number(value) !== stock;
+  const badge = stockBadge(stock);
+
+  useEffect(() => { setValue(String(stock)); }, [stock]);
+
+  const save = async () => {
+    const n = parseInt(value, 10);
+    if (isNaN(n) || n < 0) { toast.error("Enter a stock number of 0 or more"); return; }
+    setSaving(true);
+    try {
+      const body = variantLabel ? { variant_label: variantLabel, variant_stock: n } : { stock: n };
+      await api.patch(`/products/${p.id}/stock`, body);
+      toast.success(`Stock updated · ${p.title}${variantLabel ? ` (${variantLabel})` : ""}`);
+      onUpdated();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update stock");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr className="border-b border-warm/60" data-testid={`inventory-row-${row.key}`}>
+      <td className="py-3 flex items-center gap-2">
+        <img src={resolveUploadUrl(p.image_url)} className="w-10 h-10 object-contain bg-parchment/40 rounded" alt="" />
+        <span className="line-clamp-1">{p.title}</span>
+        {p.seller_id && <span className="text-[9px] uppercase tracking-widest text-muted-warm border border-warm rounded-full px-1.5 py-0.5 shrink-0">Seller</span>}
+      </td>
+      <td className="text-xs">{variantLabel || "—"}</td>
+      <td className="text-xs">{p.category}</td>
+      <td>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min="0"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            data-testid={`inventory-stock-input-${row.key}`}
+            className="h-8 w-20 text-sm"
+          />
+          <button
+            type="button"
+            onClick={save}
+            disabled={!dirty || saving}
+            data-testid={`inventory-stock-save-${row.key}`}
+            className="text-xs px-2 py-1.5 rounded bg-ink text-cream hover:bg-terracotta disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </td>
+      <td>
+        <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border ${badge.className}`}>
+          {stock <= LOW_STOCK_THRESHOLD && <AlertCircle size={10} />}
+          {badge.label}
+        </span>
+      </td>
     </tr>
   );
 }
