@@ -17,6 +17,7 @@ import jwt
 import razorpay
 import requests
 import aiosmtplib
+import setu_client
 
 # The cloudinary SDK reads CLOUDINARY_URL the instant it's imported (below)
 # and raises immediately if it isn't exactly "cloudinary://key:secret@cloud"
@@ -147,6 +148,7 @@ INDIA_STATES = [
 # ---------- GST ----------
 GST_RATES = (5, 18)
 GSTIN_REGEX = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
+PAN_REGEX = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 
 
 # ---------- Product categories ----------
@@ -1641,6 +1643,153 @@ async def seller_update_order_status(order_id: str, payload: SellerOrderStatusUp
     )
     updated = await db.orders.find_one({"_id": oid})
     return _seller_order_view(updated, seller_id)
+
+
+# ---------- Seller KYC (Setu Bridge: PAN / GSTIN / bank account) ----------
+# Disabled-by-default like Razorpay above: each endpoint 503s with a clear
+# message until its SETU_* env vars are set. See backend/setu_client.py for
+# what each product needs and where to provision it in the Setu dashboard.
+class PanVerifyInput(BaseModel):
+    pan_number: str
+
+    @field_validator("pan_number")
+    @classmethod
+    def normalize_pan(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class BankAccountVerifyInput(BaseModel):
+    account_number: str = Field(min_length=4, max_length=30)
+    ifsc: str
+
+    @field_validator("ifsc")
+    @classmethod
+    def normalize_ifsc(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+def _mask_account_number(account_number: str) -> str:
+    """Keeps only the last 4 digits, e.g. '8517129000033' -> '•••••••••0033'."""
+    if len(account_number) <= 4:
+        return account_number
+    return "•" * (len(account_number) - 4) + account_number[-4:]
+
+
+@api_router.get("/seller/kyc/status")
+async def seller_kyc_status(user: dict = Depends(require_seller)):
+    doc = await db.users.find_one({"_id": ObjectId(user["id"])}) or {}
+    bank_account_number = doc.get("bank_account_number", "")
+    return {
+        "gstin": doc.get("gst_number", ""),
+        "gstin_verified": bool(doc.get("gstin_verified")),
+        "gstin_verified_at": doc.get("gstin_verified_at", ""),
+        "gstin_company_name": doc.get("gstin_company_name", ""),
+        "gstin_company_status": doc.get("gstin_company_status", ""),
+        "pan_number": doc.get("pan_number", ""),
+        "pan_verified": bool(doc.get("pan_verified")),
+        "pan_verified_at": doc.get("pan_verified_at", ""),
+        "pan_holder_name": doc.get("pan_holder_name", ""),
+        "bank_account_masked": _mask_account_number(bank_account_number) if bank_account_number else "",
+        "bank_ifsc": doc.get("bank_ifsc", ""),
+        "bank_account_verified": bool(doc.get("bank_account_verified")),
+        "bank_account_verified_at": doc.get("bank_account_verified_at", ""),
+        "bank_account_holder_name": doc.get("bank_account_holder_name", ""),
+    }
+
+
+@api_router.post("/seller/kyc/verify-gstin")
+async def seller_verify_gstin(user: dict = Depends(require_seller)):
+    gstin = (user.get("gst_number") or "").strip().upper()
+    if not gstin:
+        raise HTTPException(status_code=400, detail="No GSTIN on file — add one to your profile first")
+    if not setu_client.gst_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="GSTIN verification is not configured. Set SETU_CLIENT_ID, SETU_CLIENT_SECRET and SETU_GST_PRODUCT_INSTANCE_ID.",
+        )
+    try:
+        result = await run_in_threadpool(setu_client.verify_gst_sync, gstin)
+    except setu_client.SetuNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except requests.HTTPError as e:
+        logger.error(f"Setu GSTIN verification failed for seller {user['id']}: {e}")
+        raise HTTPException(status_code=502, detail="GSTIN verification service is unavailable right now")
+
+    verified = result.get("verification") == "success"
+    company = (result.get("data") or {}).get("company") or {}
+    update = {
+        "gstin_verified": verified,
+        "gstin_verified_at": datetime.now(timezone.utc).isoformat(),
+        "gstin_company_name": company.get("name", ""),
+        "gstin_company_status": company.get("status", ""),
+    }
+    await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": update})
+    return {"verified": verified, "message": result.get("message", ""), **update}
+
+
+@api_router.post("/seller/kyc/verify-pan")
+async def seller_verify_pan(payload: PanVerifyInput, user: dict = Depends(require_seller)):
+    if not PAN_REGEX.match(payload.pan_number):
+        raise HTTPException(status_code=400, detail="PAN must be a valid 10-character PAN (e.g. ABCDE1234A)")
+    if not setu_client.pan_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="PAN verification is not configured. Set SETU_CLIENT_ID, SETU_CLIENT_SECRET and SETU_PAN_PRODUCT_INSTANCE_ID.",
+        )
+    try:
+        result = await run_in_threadpool(setu_client.verify_pan_sync, payload.pan_number)
+    except setu_client.SetuNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except requests.HTTPError as e:
+        logger.error(f"Setu PAN verification failed for seller {user['id']}: {e}")
+        raise HTTPException(status_code=502, detail="PAN verification service is unavailable right now")
+
+    verified = result.get("verification") == "success"
+    data = result.get("data") or {}
+    update = {
+        "pan_number": payload.pan_number,
+        "pan_verified": verified,
+        "pan_verified_at": datetime.now(timezone.utc).isoformat(),
+        "pan_holder_name": data.get("full_name", ""),
+    }
+    await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": update})
+    return {"verified": verified, "message": result.get("message", ""), "holder_name": data.get("full_name", "")}
+
+
+@api_router.post("/seller/kyc/verify-bank-account")
+async def seller_verify_bank_account(payload: BankAccountVerifyInput, user: dict = Depends(require_seller)):
+    if not setu_client.bank_account_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Bank account verification is not configured. Set SETU_CLIENT_ID, SETU_CLIENT_SECRET and SETU_BAV_PRODUCT_INSTANCE_ID.",
+        )
+    try:
+        result = await run_in_threadpool(setu_client.verify_bank_account_sync, payload.account_number, payload.ifsc)
+    except setu_client.SetuNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except requests.HTTPError as e:
+        logger.error(f"Setu bank account verification failed for seller {user['id']}: {e}")
+        raise HTTPException(status_code=502, detail="Bank account verification service is unavailable right now")
+
+    verified = result.get("verification") == "success"
+    data = result.get("data") or {}
+    update = {
+        # Stored in full so payouts can actually be sent to it later — this
+        # DB has no field-level encryption yet, so restrict Mongo access
+        # accordingly before relying on this for real seller payouts.
+        "bank_account_number": payload.account_number,
+        "bank_ifsc": payload.ifsc,
+        "bank_account_verified": verified,
+        "bank_account_verified_at": datetime.now(timezone.utc).isoformat(),
+        "bank_account_holder_name": data.get("name", ""),
+    }
+    await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": update})
+    return {
+        "verified": verified,
+        "message": result.get("message", ""),
+        "holder_name": data.get("name", ""),
+        "account_masked": _mask_account_number(payload.account_number),
+    }
 
 
 # ---------- Razorpay payments ----------
