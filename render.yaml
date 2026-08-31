@@ -49,6 +49,18 @@ services:
         sync: false
       - key: ADMIN_WHATSAPP_NUMBERS       # comma-separated E.164 numbers, e.g. "+919876543210,+919812345678"
         sync: false                       # notified on new seller signups + pending products; approval stays in the dashboard
+      - key: SETU_CLIENT_ID                    # setu.co/data/kyc dashboard → API credentials. Optional: powers seller PAN/GSTIN/bank-account KYC.
+        sync: false
+      - key: SETU_CLIENT_SECRET
+        sync: false
+      - key: SETU_BASE_URL                     # sandbox default below; switch to https://dg.setu.co in production
+        value: https://dg-sandbox.setu.co
+      - key: SETU_PAN_PRODUCT_INSTANCE_ID       # one product instance per Bridge product — set only the ones you've provisioned
+        sync: false
+      - key: SETU_GST_PRODUCT_INSTANCE_ID
+        sync: false
+      - key: SETU_BAV_PRODUCT_INSTANCE_ID
+        sync: false
 
       # ---- App config ----
       - key: FRONTEND_URL

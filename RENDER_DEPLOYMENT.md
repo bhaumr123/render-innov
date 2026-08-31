@@ -48,6 +48,8 @@ For `iwi-backend`, Render will prompt for the env vars marked `sync: false`:
 | `TWILIO_AUTH_TOKEN` | Same page. |
 | `TWILIO_WHATSAPP_FROM` | Your Twilio WhatsApp-enabled number in the form `whatsapp:+14155238886` (that's the shared sandbox number while testing — join it by sending the join code Twilio gives you from your own WhatsApp first). |
 | `ADMIN_WHATSAPP_NUMBERS` | Comma-separated admin phone number(s) in E.164 form, e.g. `+919876543210,+919812345678`. These get a WhatsApp message on every new seller signup and every pending product, as a heads-up — approval itself happens in the admin dashboard as usual. Needs Twilio configured (above) and, while on the sandbox, each number must have joined it first. |
+| `SETU_CLIENT_ID` / `SETU_CLIENT_SECRET` | From the [Setu Bridge dashboard](https://bridge.setu.co) → API credentials, under the KYC (Data) product suite. **Optional** — without these, the seller PAN/GSTIN/bank-account verification endpoints (`/api/seller/kyc/...`) 503 instead of erroring. |
+| `SETU_PAN_PRODUCT_INSTANCE_ID`, `SETU_GST_PRODUCT_INSTANCE_ID`, `SETU_BAV_PRODUCT_INSTANCE_ID` | Each Bridge product (PAN Verification, GST Verification, Bank Account Verification) is provisioned separately and gets its own product-instance-id — set only the ones you've actually signed up for; the matching endpoint stays disabled until its ID is set. |
 
 `JWT_SECRET` auto-generates on first deploy — no action needed.
 
