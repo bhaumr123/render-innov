@@ -11,13 +11,21 @@ English → it reads the target app's current code → calls the Claude API to
 design the change → shows you a **file-by-file diff** of exactly what would
 change → and, once you approve, **writes those changes to disk for real**.
 
-The app it modifies is `featureforge/tripcraft-app/`, which starts **empty**.
-So instead of me hand-writing the rest of TripCraft (the trip-itinerary app
-from our original plan), we use FeatureForge *itself* to build it, feature
-by feature — you'll watch real diffs land in `tripcraft-app/` as we go. Two
-projects, one set of lessons: building FeatureForge teaches you full-stack +
-AI-API-integration fundamentals; using it produces a second real app as a
-side effect.
+FeatureForge isn't tied to one kind of output. It has **streams** — each one
+a named target directory plus a system prompt tuned for what belongs there:
+
+- **`fullstack`** → writes to `featureforge/tripcraft-app/`. Application
+  code: backend API, frontend, database.
+- **`k8s`** → writes to `featureforge/k8s-deploy/`. Deployment artifacts:
+  Dockerfiles, Kubernetes manifests (Deployment, Service, ConfigMap, ...).
+
+Both target directories start **empty**. So instead of me hand-writing the
+rest of TripCraft (the trip-itinerary app from our original plan) *and*
+separately hand-writing its Kubernetes manifests, we use FeatureForge
+*itself* to build both — you'll watch real diffs land in each directory as
+we go. Three projects, one set of lessons: building FeatureForge teaches you
+full-stack + AI-API-integration fundamentals; using it produces a real app
+*and* its deployment config as a side effect.
 
 ## Why this project
 
@@ -54,18 +62,21 @@ Browser (React SPA) — FeatureForge's own UI
      |  fetch/axios over HTTPS, JSON
      v
 Express REST API (featureforge/backend)
+POST /api/features/:stream/plan
+POST /api/features/:stream/apply
      |                                  \
      |  reads/writes files               \  server-side HTTPS call
-     v                                     v  (API key stays in backend .env)
-featureforge/tripcraft-app/   <——applies plan——   Anthropic Claude API
- (the target app being built)                    (returns structured JSON:
-                                                   which files, what content,
-                                                   why)
+     |  (scoped to that stream's root)     \  (API key stays in backend .env,
+     v                                       v  system prompt varies by stream)
+   +-------------------+-------------------+     Anthropic Claude API
+   v                   v                         (returns structured JSON:
+tripcraft-app/     k8s-deploy/                    which files, what content,
+(fullstack stream) (k8s stream)                   why)
      ^
      |  Prisma ORM
      v
 SQLite / Postgres DB
- (stores your account + history of feature requests + diffs)
+ (stores your account + history of feature requests + diffs, across streams)
 ```
 
 **Key principles:**
@@ -76,6 +87,13 @@ SQLite / Postgres DB
   backend code decides whether/how to apply it. The AI proposes, our code
   disposes — this separation is what makes the "review the diff first"
   step possible and safe.
+- A stream is just configuration (a root directory + a system prompt) — the
+  plan/diff/apply code has no idea whether it's looking at JavaScript or
+  Kubernetes YAML. Adding a third stream later (say, `docs`) means adding
+  one entry to `STREAMS` and one prompt, not new plumbing.
+- Each stream writes only inside its own root — enforced in code, not just
+  by convention — so a `k8s` plan can never accidentally land inside
+  `tripcraft-app/` or vice versa.
 
 ## Learning curve — modules
 
@@ -88,13 +106,17 @@ We go in order; nothing here is optional filler.
    conventions. ✅ *Done: `GET /api/health`.*
 2. **Structured AI output** — the Anthropic SDK, secrets/env vars, prompt
    design, and **forced tool-use** to get reliable JSON back instead of
-   free text. *Deliverable: `POST /api/features/plan` calls Claude and
+   free text. ✅ *Done: `POST /api/features/:stream/plan` calls Claude and
    returns a structured change plan (no files touched yet).*
 3. **Diffing & safe file writes** — reading a project's file tree, computing
    unified diffs, applying changes to disk deliberately (never blindly).
-   *Deliverable: the plan endpoint returns real file-by-file diffs;
-   `POST /api/features/apply` writes them; first real feature lands in
-   `tripcraft-app/`.*
+   ✅ *Done: the plan endpoint returns real file-by-file diffs;
+   `POST /api/features/:stream/apply` writes them.*
+3b. **Multiple streams** — same pipeline, different target + system prompt.
+   ✅ *Done: `fullstack` (→ `tripcraft-app/`) and `k8s` (→ `k8s-deploy/`),
+   each sandboxed to its own directory. `GET /api/features/streams` lists
+   them. Still to do: actually run a request through each stream and watch
+   the first real files land.*
 4. **Database** — relational modeling, Prisma schema, migrations, CRUD.
    *Deliverable: persist every feature request + its diff + outcome to a
    DB, so FeatureForge has history.*
@@ -146,8 +168,11 @@ like "add a trip request form" through FeatureForge.
 
 - [x] Module 0 — environment & scaffold
 - [x] Module 1 — first Express endpoint
-- [ ] Module 2 — Claude structured-output plan endpoint
-- [ ] Module 3 — diffing & apply (first real feature built into tripcraft-app/)
+- [x] Module 2 — Claude structured-output plan endpoint
+- [x] Module 3 — diffing & apply
+- [x] Module 3b — multiple streams (`fullstack`, `k8s`), each sandboxed
+- [ ] Module 3c — first real feature actually run through each stream
+      (needs your ANTHROPIC_API_KEY)
 - [ ] Module 4 — database (persist history)
 - [ ] Module 5 — auth
 - [ ] Module 6 — frontend foundations

@@ -63,21 +63,57 @@ const CHANGE_TOOL = {
   },
 };
 
-function buildSystemPrompt() {
-  return [
-    "You are the code-generation engine inside FeatureForge, a tool that",
-    "builds a small full-stack app one feature at a time.",
+// Shared rules every stream follows, regardless of what kind of files it
+// produces.
+const COMMON_RULES = [
+  "- Only touch files necessary for the requested feature. Don't refactor",
+  "  unrelated files or add anything nobody asked for.",
+  "- Prefer creating new small files over growing existing ones.",
+  "- Always respond by calling the write_code_changes tool. Never reply",
+  "  with plain text.",
+];
+
+// Each stream gets its own system prompt: same tool, same JSON schema,
+// different idea of what a "file" should contain. This is the whole trick
+// to supporting more than one kind of output with one pipeline — the
+// plan/diff/apply code never needs to know it's looking at YAML instead of
+// JavaScript.
+const STREAM_PROMPTS = {
+  fullstack: [
+    "You are the code-generation engine inside FeatureForge, working on the",
+    "'fullstack' stream: TripCraft's actual application code (backend API,",
+    "frontend, database).",
     "",
     "Rules:",
-    "- Only touch files necessary for the requested feature. Don't refactor",
-    "  unrelated code or add features nobody asked for.",
-    "- Prefer creating new small files over growing existing ones.",
+    ...COMMON_RULES,
     "- Write plain, readable JavaScript. No frameworks or libraries beyond",
     "  what's already in the project unless the feature genuinely needs one",
     "  — if it does, say so in `explanation` and add it to package.json too.",
-    "- Always respond by calling the write_code_changes tool. Never reply",
-    "  with plain text.",
-  ].join("\n");
+  ].join("\n"),
+
+  k8s: [
+    "You are the code-generation engine inside FeatureForge, working on the",
+    "'k8s' stream: Kubernetes deployment manifests and Dockerfiles for",
+    "TripCraft. You are NOT writing application code here — only the files",
+    "needed to containerize and deploy it.",
+    "",
+    "Rules:",
+    ...COMMON_RULES,
+    "- Write valid Kubernetes YAML (apiVersion, kind, metadata, spec) or a",
+    "  Dockerfile, one resource (or one Dockerfile) per file, organized",
+    "  under directories like k8s-deploy/base/.",
+    "- Every container spec needs resource requests/limits and, for a long-",
+    "  running service, liveness and readiness probes.",
+    "- Prefer standard, boring Kubernetes objects (Deployment, Service,",
+    "  ConfigMap, Secret-as-placeholder) over CRDs or a specific cloud",
+    "  provider's extensions unless the request specifically asks for one.",
+    "- Never write real secret values into a manifest — use a placeholder",
+    "  and say in `explanation` that it must be filled in out-of-band.",
+  ].join("\n"),
+};
+
+function buildSystemPrompt(streamId) {
+  return STREAM_PROMPTS[streamId];
 }
 
 function buildUserMessage(description, tree, files) {
@@ -98,12 +134,12 @@ function buildUserMessage(description, tree, files) {
   ].join("\n");
 }
 
-export async function planFeature(description, { tree, files }) {
+export async function planFeature(streamId, description, { tree, files }) {
   const client = getClient();
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 8000,
-    system: buildSystemPrompt(),
+    system: buildSystemPrompt(streamId),
     tools: [CHANGE_TOOL],
     tool_choice: { type: "tool", name: "write_code_changes" },
     messages: [
