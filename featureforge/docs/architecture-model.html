@@ -1,0 +1,420 @@
+<title>FeatureForge Architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#eef1f4;
+    --surface:#ffffff;
+    --surface-2:#e3e8ed;
+    --ink:#1a2733;
+    --muted:#54626f;
+    --line:#38495a;
+    --accent:#c4622a;
+    --accent-2:#2f6f8f;
+    --accent-2-soft:#dfeaf0;
+    --accent-soft:#f6e3d5;
+    --danger:#b23b3b;
+    --grid-line: rgba(47,111,143,0.10);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f2233;
+      --surface:#14304a;
+      --surface-2:#193a59;
+      --ink:#dce8f0;
+      --muted:#93acbf;
+      --line:#7fa8c2;
+      --accent:#e08a4f;
+      --accent-2:#6fc3e6;
+      --accent-2-soft:#1c3f56;
+      --accent-soft:#3a2b1e;
+      --danger:#e08080;
+      --grid-line: rgba(111,195,230,0.08);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f2233;
+    --surface:#14304a;
+    --surface-2:#193a59;
+    --ink:#dce8f0;
+    --muted:#93acbf;
+    --line:#7fa8c2;
+    --accent:#e08a4f;
+    --accent-2:#6fc3e6;
+    --accent-2-soft:#1c3f56;
+    --accent-soft:#3a2b1e;
+    --danger:#e08080;
+    --grid-line: rgba(111,195,230,0.08);
+    color-scheme: dark;
+  }
+
+  *{ box-sizing: border-box; }
+  body{
+    background:
+      linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0/32px 32px,
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0/32px 32px,
+      var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    padding-inline: 16px;
+    padding-block: 32px;
+  }
+  main{ max-width: 940px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+
+  h1,h2,h3{ text-wrap: balance; font-family: "IBM Plex Mono", ui-monospace, monospace; letter-spacing: -0.01em; }
+  code, .mono{ font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* ---- title block, drafting-sheet style ---- */
+  .titleblock{
+    border: 1.5px solid var(--line);
+    background: var(--surface);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .titleblock__top{
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .titleblock__eyebrow{
+    font-family:"IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-2);
+    margin: 0 0 8px;
+  }
+  .titleblock__top h1{ font-size: clamp(24px, 4vw, 32px); margin: 0 0 10px; font-weight: 700; }
+  .titleblock__top p{ margin: 0; color: var(--muted); font-size: 14.5px; max-width: 62ch; line-height: 1.55; }
+  .titleblock__fields{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px,1fr));
+  }
+  .field{
+    padding: 12px 20px;
+    border-right: 1px solid var(--line);
+    border-top: 1px solid var(--line);
+  }
+  .field:last-child{ border-right: none; }
+  .field dt{
+    font-family:"IBM Plex Mono",monospace;
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 4px;
+  }
+  .field dd{ margin: 0; font-size: 13.5px; font-weight: 600; }
+
+  /* ---- section shells ---- */
+  section{ display:flex; flex-direction:column; gap: 14px; }
+  .section-head{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .section-head .num{
+    font-family:"IBM Plex Mono",monospace; font-size: 13px; color: var(--accent-2);
+    background: var(--accent-2-soft); border-radius: 3px; padding: 2px 7px;
+  }
+  section h2{ font-size: 19px; margin: 0; font-weight: 600; }
+  .section-note{ margin:0; color: var(--muted); font-size: 14px; line-height:1.6; max-width: 68ch; }
+
+  figure{ margin: 0; }
+  .diagram-frame{
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: clamp(10px, 3vw, 22px);
+    overflow-x: auto;
+  }
+  svg{ display:block; max-width: 100%; height: auto; margin: 0 auto; }
+  figcaption{
+    font-size: 12.5px; color: var(--muted); margin-top: 10px; line-height: 1.5;
+  }
+  figcaption b{ color: var(--ink); font-weight: 600; }
+
+  svg text{ fill: currentColor; font-family:"IBM Plex Mono", monospace; }
+  .node-label{ font-family:"IBM Plex Sans", sans-serif; font-weight: 600; }
+  .node-sub{ font-family:"IBM Plex Mono", monospace; opacity: 0.72; }
+  .arrow-label{ font-size: 10.5px; }
+  .arrow-num{ font-weight: 700; fill: var(--surface); }
+
+  /* ---- reference table ---- */
+  .spec{
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 13.5px;
+  }
+  .spec th, .spec td{
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  .spec thead th{
+    font-family:"IBM Plex Mono", monospace;
+    font-size: 10.5px; letter-spacing:0.08em; text-transform: uppercase;
+    color: var(--muted); background: var(--surface-2);
+  }
+  .spec tbody tr:last-child td{ border-bottom: none; }
+  .spec td.path{ font-family:"IBM Plex Mono", monospace; color: var(--accent-2); white-space: nowrap; }
+  .spec-wrap{ overflow-x:auto; }
+
+  .legend-row{ display:flex; gap: 18px; flex-wrap: wrap; margin-top: 4px; }
+  .legend-item{ display:flex; align-items:center; gap:7px; font-size:12.5px; color: var(--muted); }
+  .swatch{ width: 14px; height: 3px; border-radius: 2px; flex: none; }
+
+  footer{
+    font-size: 12px; color: var(--muted); text-align:center; padding-top: 8px;
+    border-top: 1px dashed var(--line);
+  }
+</style>
+
+<main>
+
+  <div class="titleblock">
+    <div class="titleblock__top">
+      <p class="titleblock__eyebrow">Architecture Model — Sheet 1</p>
+      <h1>FeatureForge</h1>
+      <p>
+        A feature-request-to-diff engine. You describe a change in plain English;
+        FeatureForge reads the target directory, asks Claude to design the change
+        as structured JSON, shows you the resulting file-by-file diff, and writes
+        it to disk only once you approve.
+      </p>
+    </div>
+    <dl class="titleblock__fields">
+      <div class="field"><dt>Streams</dt><dd>fullstack · k8s</dd></div>
+      <div class="field"><dt>Third-party API</dt><dd>Anthropic Claude</dd></div>
+      <div class="field"><dt>Status</dt><dd>Modules 0–3b done</dd></div>
+      <div class="field"><dt>Repo path</dt><dd class="mono">featureforge/</dd></div>
+    </dl>
+  </div>
+
+  <!-- ================= DIAGRAM 1 — REQUEST MECHANISM ================= -->
+  <section>
+    <div class="section-head">
+      <span class="num">01</span>
+      <h2>How one feature request moves through the system</h2>
+    </div>
+    <p class="section-note">
+      Every request — for either stream — takes the same six-hop path. Claude
+      never touches disk directly: it returns a plan, and FeatureForge's own
+      code decides whether and how to apply it.
+    </p>
+
+    <figure class="diagram-frame">
+      <svg viewBox="0 0 920 470" role="img"
+        aria-label="Sequence diagram: the browser sends a plan request to the Express API, which reads existing files from the target stream's root, sends the file context and a system prompt to the Claude API, receives a structured JSON plan back via forced tool-use, computes a diff and returns it to the browser with nothing written yet, and only after the browser sends an apply request does the Express API write the files into that stream's sandboxed target root.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- nodes -->
+        <g>
+          <rect x="30" y="34" width="190" height="64" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.3"/>
+          <text x="125" y="60" text-anchor="middle" class="node-label" font-size="13.5">Browser</text>
+          <text x="125" y="78" text-anchor="middle" class="node-sub" font-size="10.5">FeatureForge UI</text>
+        </g>
+
+        <g>
+          <rect x="365" y="34" width="200" height="64" rx="6" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.5"/>
+          <text x="465" y="58" text-anchor="middle" class="node-label" font-size="13.5">Express API</text>
+          <text x="465" y="76" text-anchor="middle" class="node-sub" font-size="10">featureforge/backend</text>
+        </g>
+
+        <g>
+          <rect x="710" y="34" width="180" height="64" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+          <text x="800" y="58" text-anchor="middle" class="node-label" font-size="13.5">Claude API</text>
+          <text x="800" y="76" text-anchor="middle" class="node-sub" font-size="10">forced tool-use</text>
+        </g>
+
+        <!-- sandbox boundary -->
+        <rect x="330" y="330" width="300" height="120" rx="6" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4" opacity="0.55"/>
+        <text x="480" y="322" text-anchor="middle" class="node-sub" font-size="10">sandboxed to the requested stream's root</text>
+
+        <rect x="345" y="352" width="120" height="76" rx="5" fill="var(--surface-2)" stroke="currentColor" stroke-width="1"/>
+        <text x="405" y="386" text-anchor="middle" class="node-label" font-size="11.5">tripcraft-app/</text>
+        <text x="405" y="402" text-anchor="middle" class="node-sub" font-size="9.5">fullstack</text>
+
+        <rect x="495" y="352" width="120" height="76" rx="5" fill="var(--surface-2)" stroke="currentColor" stroke-width="1"/>
+        <text x="555" y="386" text-anchor="middle" class="node-label" font-size="11.5">k8s-deploy/</text>
+        <text x="555" y="402" text-anchor="middle" class="node-sub" font-size="9.5">k8s</text>
+
+        <!-- 1 browser -> express : plan -->
+        <line x1="220" y1="58" x2="360" y2="58" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow)"/>
+        <circle cx="238" cy="58" r="9" fill="currentColor"/>
+        <text x="238" y="61.5" text-anchor="middle" class="arrow-num" font-size="10">1</text>
+        <text x="290" y="45" text-anchor="middle" class="arrow-label">POST /:stream/plan</text>
+
+        <!-- context read: express -> target dirs (dashed, unlabeled number) -->
+        <line x1="440" y1="98" x2="410" y2="345" stroke="currentColor" stroke-width="1.1" stroke-dasharray="3 4" opacity="0.7" marker-end="url(#arrow)"/>
+        <text x="330" y="230" class="arrow-label" transform="rotate(-79 330 230)" text-anchor="middle">reads current files first</text>
+
+        <!-- 2 express -> claude : context -->
+        <line x1="565" y1="52" x2="705" y2="52" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow)"/>
+        <circle cx="600" cy="52" r="9" fill="currentColor"/>
+        <text x="600" y="55.5" text-anchor="middle" class="arrow-num" font-size="10">2</text>
+        <text x="635" y="40" text-anchor="middle" class="arrow-label">prompt + file tree</text>
+
+        <!-- 3 claude -> express : structured plan -->
+        <line x1="705" y1="80" x2="565" y2="80" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+        <circle cx="635" cy="80" r="9" fill="var(--accent)"/>
+        <text x="635" y="83.5" text-anchor="middle" class="arrow-num" font-size="10">3</text>
+        <text x="635" y="98" text-anchor="middle" class="arrow-label">structured JSON plan</text>
+
+        <!-- 4 express -> browser : diff, nothing written -->
+        <line x1="365" y1="150" x2="140" y2="102" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow)"/>
+        <circle cx="252" cy="126" r="9" fill="currentColor"/>
+        <text x="252" y="129.5" text-anchor="middle" class="arrow-num" font-size="10">4</text>
+        <text x="255" y="150" text-anchor="middle" class="arrow-label">diff per file — nothing written yet</text>
+
+        <!-- 5 browser -> express : apply -->
+        <line x1="140" y1="185" x2="400" y2="330" stroke="currentColor" stroke-width="1.4" marker-end="url(#arrow)"/>
+        <circle cx="220" cy="217" r="9" fill="currentColor"/>
+        <text x="220" y="220.5" text-anchor="middle" class="arrow-num" font-size="10">5</text>
+        <text x="150" y="250" text-anchor="middle" class="arrow-label">POST /:stream/apply</text>
+        <text x="150" y="264" text-anchor="middle" class="arrow-label">{ planId } — only if you approved</text>
+
+        <!-- 6 express -> targets : write -->
+        <line x1="465" y1="98" x2="480" y2="345" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+        <circle cx="472" cy="270" r="9" fill="var(--accent)"/>
+        <text x="472" y="273.5" text-anchor="middle" class="arrow-num" font-size="10">6</text>
+        <text x="560" y="270" text-anchor="middle" class="arrow-label">writes files — this stream's root only</text>
+      </svg>
+      <figcaption>
+        <b>Fig. 1</b> — Claude only ever returns data (step 3); FeatureForge's own
+        code decides what to do with it. Steps 1–4 can run any number of times
+        with nothing on disk changing — step 6 is the only write, and it's gated
+        behind your explicit apply call.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= DIAGRAM 2 — STREAMS ================= -->
+  <section>
+    <div class="section-head">
+      <span class="num">02</span>
+      <h2>One pipeline, two streams — and a boundary between them</h2>
+    </div>
+    <p class="section-note">
+      <code>fullstack</code> and <code>k8s</code> run through the exact same
+      plan → diff → apply code. Only two things change per stream: which
+      directory it's allowed to write to, and which system prompt Claude
+      receives. The write boundary is enforced in code, not convention.
+    </p>
+
+    <figure class="diagram-frame">
+      <svg viewBox="0 0 920 400" role="img"
+        aria-label="Diagram: a single STREAMS registry configures two rows, fullstack and k8s, each with its own root directory and system prompt. Both feed the same shared plan, diff, and apply pipeline. The pipeline writes fullstack changes only into tripcraft-app and k8s changes only into k8s-deploy; an attempt to cross from the k8s stream into tripcraft-app is shown blocked.">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- registry -->
+        <rect x="260" y="24" width="400" height="110" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.3"/>
+        <text x="460" y="46" text-anchor="middle" class="node-label" font-size="12.5">STREAMS registry</text>
+        <line x1="280" y1="58" x2="640" y2="58" stroke="currentColor" stroke-width="0.7" opacity="0.4"/>
+        <text x="290" y="76" class="node-sub" font-size="10.5">fullstack</text>
+        <text x="420" y="76" class="arrow-label" font-size="10">root: tripcraft-app/</text>
+        <text x="290" y="98" class="node-sub" font-size="10.5">k8s</text>
+        <text x="420" y="98" class="arrow-label" font-size="10">root: k8s-deploy/</text>
+        <text x="290" y="120" class="node-sub" font-size="9.5" opacity="0.75">each row also picks its own Claude system prompt</text>
+
+        <!-- pipeline -->
+        <rect x="335" y="180" width="250" height="56" rx="6" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.5"/>
+        <text x="460" y="213" text-anchor="middle" class="node-label" font-size="12.5">plan / diff / apply pipeline</text>
+        <line x1="460" y1="134" x2="460" y2="176" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow2)"/>
+        <text x="475" y="158" class="arrow-label" font-size="10">stream param selects the row</text>
+
+        <!-- targets -->
+        <rect x="90" y="310" width="220" height="70" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="200" y="340" text-anchor="middle" class="node-label" font-size="12">tripcraft-app/</text>
+        <text x="200" y="358" text-anchor="middle" class="node-sub" font-size="9.5">fullstack target</text>
+
+        <rect x="610" y="310" width="220" height="70" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="720" y="340" text-anchor="middle" class="node-label" font-size="12">k8s-deploy/</text>
+        <text x="720" y="358" text-anchor="middle" class="node-sub" font-size="9.5">k8s target</text>
+
+        <line x1="380" y1="236" x2="220" y2="308" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow2)"/>
+        <text x="270" y="270" class="arrow-label" font-size="10">/api/features/fullstack/apply</text>
+
+        <line x1="540" y1="236" x2="700" y2="308" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow2)"/>
+        <text x="660" y="270" class="arrow-label" font-size="10">/api/features/k8s/apply</text>
+
+        <!-- blocked cross-write -->
+        <line x1="700" y1="345" x2="330" y2="345" stroke="var(--danger)" stroke-width="1.4" stroke-dasharray="5 5"/>
+        <circle cx="500" cy="345" r="13" fill="var(--surface)" stroke="var(--danger)" stroke-width="1.4"/>
+        <text x="500" y="349.5" text-anchor="middle" font-size="13" fill="var(--danger)">✕</text>
+        <text x="500" y="392" text-anchor="middle" class="arrow-label" fill="var(--danger)">k8s plan writing into tripcraft-app/ — rejected by resolveSafe()</text>
+      </svg>
+      <figcaption>
+        <b>Fig. 2</b> — Adding a third stream later means one new row in the
+        registry and one new prompt, not new plumbing. The dashed red line is
+        the one path the code refuses to take, whichever stream a plan came from.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= REFERENCE ================= -->
+  <section>
+    <div class="section-head">
+      <span class="num">03</span>
+      <h2>Reference</h2>
+    </div>
+
+    <div class="spec-wrap">
+      <table class="spec">
+        <thead>
+          <tr><th>Endpoint</th><th>Does</th><th>Writes to disk?</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path">GET /api/features/streams</td>
+            <td>Lists the available streams and what each targets.</td>
+            <td>No</td>
+          </tr>
+          <tr>
+            <td class="path">POST /api/features/:stream/plan</td>
+            <td>Reads the stream's target root, calls Claude, returns a summary + per-file diff.</td>
+            <td>No</td>
+          </tr>
+          <tr>
+            <td class="path">POST /api/features/:stream/apply</td>
+            <td>Looks up a planId from a prior <code>/plan</code> call and writes those exact files.</td>
+            <td><b style="color:var(--accent)">Yes</b> — sandboxed to that stream's root</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="spec-wrap">
+      <table class="spec">
+        <thead>
+          <tr><th>Layer</th><th>Choice</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Frontend</td><td>React (Vite) + React Router + Tailwind CSS — not yet built</td></tr>
+          <tr><td>Backend</td><td>Node.js + Express</td></tr>
+          <tr><td>Database</td><td>SQLite via Prisma — not yet built</td></tr>
+          <tr><td>Auth</td><td>bcrypt + JWT — not yet built</td></tr>
+          <tr><td>Third-party API</td><td>Anthropic Claude, forced tool-use for structured JSON</td></tr>
+          <tr><td>Diffing</td><td><code>diff</code> npm package → unified diffs</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="legend-row">
+      <div class="legend-item"><span class="swatch" style="background:var(--accent-2)"></span> request / read path</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--accent)"></span> AI response / disk write</div>
+      <div class="legend-item"><span class="swatch" style="background:var(--danger)"></span> blocked by the sandbox</div>
+    </div>
+  </section>
+
+  <footer>FeatureForge — learning project inside render-innov · generated as a companion to ROADMAP.md</footer>
+</main>
