@@ -17,7 +17,7 @@
 const { execSync } = require("child_process");
 const path = require("path");
 
-const PROJECT_DIR = "learn-tripcraft";
+const PROJECT_DIR = "featureforge";
 const AUTH_SENSITIVE = [
   /auth/i,
   /jwt/i,
