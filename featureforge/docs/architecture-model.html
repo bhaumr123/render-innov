@@ -189,11 +189,113 @@
     </dl>
   </div>
 
-  <!-- ================= DIAGRAM 1 — REQUEST MECHANISM ================= -->
+  <!-- ================= DIAGRAM 0 — FULL SYSTEM MODEL ================= -->
   <section>
     <div class="section-head">
       <span class="num">01</span>
-      <h2>How one feature request moves through the system</h2>
+      <h2>Full system model — built and planned, together</h2>
+    </div>
+    <p class="section-note">
+      The complete target architecture from the roadmap in one picture:
+      FeatureForge itself (top), what it writes into each stream's target
+      directory (middle), and where that ultimately deploys (bottom).
+      <b style="color:var(--ink)">Filled ●</b> marks what runs today;
+      <b style="color:var(--ink)">hollow ○</b> marks what's still ahead,
+      with its roadmap module.
+    </p>
+
+    <figure class="diagram-frame">
+      <svg viewBox="0 0 960 760" role="img"
+        aria-label="Layered diagram of the full FeatureForge system. A browser talks to a planned FeatureForge React frontend, which talks to the Express backend. The backend already has feature routes, a Claude client, a diff engine, and sandboxed filesystem access; it still needs auth middleware and a request-history database, both planned. The backend calls the external Claude API and writes into two target directories: tripcraft-app, which will itself contain a planned frontend, backend, and database once built through the fullstack stream, and k8s-deploy, which will contain a planned Dockerfile and Kubernetes manifests once built through the k8s stream. Both targets ultimately reach a deploy target: Render today, or a Kubernetes cluster once k8s-deploy is real.">
+        <defs>
+          <marker id="arrow3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- browser -->
+        <rect x="380" y="20" width="200" height="50" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.3"/>
+        <text x="480" y="50" text-anchor="middle" class="node-label" font-size="12.5">Your browser</text>
+
+        <!-- FF frontend, planned -->
+        <rect x="350" y="102" width="260" height="52" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.8"/>
+        <text x="480" y="124" text-anchor="middle" class="node-label" font-size="12">FeatureForge Frontend</text>
+        <text x="480" y="141" text-anchor="middle" class="node-sub" font-size="9.5">○ React — Module 6–8</text>
+
+        <line x1="480" y1="70" x2="480" y2="100" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
+        <line x1="480" y1="154" x2="480" y2="186" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
+
+        <!-- FF backend -->
+        <rect x="230" y="188" width="500" height="176" rx="6" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.5"/>
+        <text x="480" y="210" text-anchor="middle" class="node-label" font-size="12.5">FeatureForge Backend (Express)</text>
+        <text x="255" y="233" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Feature routes — /plan /apply</text>
+        <text x="255" y="255" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Claude client (forced tool-use)</text>
+        <text x="255" y="277" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Diff engine (diff package)</text>
+        <text x="255" y="299" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Sandboxed filesystem access</text>
+        <text x="255" y="321" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Auth middleware (JWT) — Module 5</text>
+        <text x="255" y="343" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Request history persisted — Module 4</text>
+
+        <!-- claude api -->
+        <rect x="760" y="90" width="170" height="66" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="845" y="115" text-anchor="middle" class="node-label" font-size="12">Claude API</text>
+        <text x="845" y="132" text-anchor="middle" class="node-sub" font-size="9.5">● external · Anthropic</text>
+        <line x1="732" y1="220" x2="758" y2="145" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#arrow3)"/>
+
+        <!-- db -->
+        <rect x="760" y="210" width="170" height="80" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.8"/>
+        <text x="845" y="234" text-anchor="middle" class="node-label" font-size="12">SQLite (Prisma)</text>
+        <text x="845" y="251" text-anchor="middle" class="node-sub" font-size="9">○ Module 4</text>
+        <text x="845" y="267" text-anchor="middle" class="node-sub" font-size="9">Users · FeatureRequests</text>
+        <line x1="732" y1="270" x2="758" y2="255" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3" marker-end="url(#arrow3)" opacity="0.8"/>
+
+        <!-- stream outputs -->
+        <line x1="330" y1="364" x2="255" y2="428" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow3)"/>
+        <text x="235" y="400" class="arrow-label" font-size="10">fullstack stream writes</text>
+
+        <line x1="630" y1="364" x2="700" y2="428" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow3)"/>
+        <text x="720" y="400" class="arrow-label" font-size="10">k8s stream writes</text>
+
+        <rect x="90" y="430" width="350" height="190" rx="6" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/>
+        <text x="265" y="454" text-anchor="middle" class="node-label" font-size="12.5">tripcraft-app/</text>
+        <text x="265" y="470" text-anchor="middle" class="node-sub" font-size="9.5">fullstack stream output</text>
+        <text x="115" y="495" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Frontend — React (Module 6–8)</text>
+        <text x="115" y="519" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Backend — Express API</text>
+        <text x="115" y="543" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Database — SQLite</text>
+        <text x="115" y="567" class="node-sub" font-size="9.5" opacity="0.8">built one feature request at a time,</text>
+        <text x="115" y="583" class="node-sub" font-size="9.5" opacity="0.8">same way FeatureForge itself was</text>
+
+        <rect x="520" y="430" width="350" height="190" rx="6" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/>
+        <text x="695" y="454" text-anchor="middle" class="node-label" font-size="12.5">k8s-deploy/</text>
+        <text x="695" y="470" text-anchor="middle" class="node-sub" font-size="9.5">k8s stream output</text>
+        <text x="545" y="495" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Dockerfile</text>
+        <text x="545" y="519" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Deployment.yaml</text>
+        <text x="545" y="543" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Service.yaml</text>
+        <text x="545" y="567" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> ConfigMap.yaml</text>
+
+        <!-- deploy target -->
+        <rect x="280" y="672" width="400" height="60" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.3"/>
+        <text x="480" y="698" text-anchor="middle" class="node-label" font-size="12">Deploy target</text>
+        <text x="480" y="716" text-anchor="middle" class="node-sub" font-size="9.5">Render today · Kubernetes once k8s-deploy/ is real</text>
+
+        <line x1="270" y1="620" x2="400" y2="670" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow3)" opacity="0.85"/>
+        <text x="290" y="652" class="arrow-label" font-size="9.5">container image</text>
+
+        <line x1="700" y1="620" x2="570" y2="670" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow3)" opacity="0.85"/>
+        <text x="690" y="652" class="arrow-label" font-size="9.5" text-anchor="end">kubectl apply</text>
+      </svg>
+      <figcaption>
+        <b>Fig. 0</b> — Nothing here is invented for the diagram: every solid
+        piece is code you've already run against; every hollow piece is a
+        named module in ROADMAP.md, not a vague someday.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= DIAGRAM 1 — REQUEST MECHANISM ================= -->
+  <section>
+    <div class="section-head">
+      <span class="num">02</span>
+      <h2>Zoom in: how one feature request moves through the system</h2>
     </div>
     <p class="section-note">
       Every request — for either stream — takes the same six-hop path. Claude
@@ -297,7 +399,7 @@
   <!-- ================= DIAGRAM 2 — STREAMS ================= -->
   <section>
     <div class="section-head">
-      <span class="num">02</span>
+      <span class="num">03</span>
       <h2>One pipeline, two streams — and a boundary between them</h2>
     </div>
     <p class="section-note">
@@ -364,7 +466,7 @@
   <!-- ================= REFERENCE ================= -->
   <section>
     <div class="section-head">
-      <span class="num">03</span>
+      <span class="num">04</span>
       <h2>Reference</h2>
     </div>
 

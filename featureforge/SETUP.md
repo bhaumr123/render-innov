@@ -6,6 +6,13 @@ gets reclaimed after inactivity — so if you want a persistent place to run
 and keep developing FeatureForge, your Mac is exactly right. These are the
 steps to get the current code running there.
 
+**Shortcut:** once you've cloned the repo (step 2), you can run
+`bash featureforge/scripts/setup-mac.sh` instead of steps 3–4 — it checks
+your Node version, installs both the backend and frontend, and creates
+`.env` from the template for you. Steps 3–7 below are what that script
+automates, spelled out in case you'd rather do it by hand or something
+goes wrong.
+
 ## 1. Prerequisites
 
 - **Node.js 18 or newer** (the Anthropic SDK requires it). Check what you
@@ -36,41 +43,50 @@ git checkout claude/elegant-galileo-gpaeyl
 git pull
 ```
 
-## 3. Install the backend's dependencies
+## 3. Install dependencies (backend and frontend)
 
 ```bash
-cd featureforge/backend
-npm install
+cd featureforge/backend && npm install
+cd ../frontend && npm install
 ```
 
 ## 4. Add your Anthropic API key
 
 ```bash
+cd ../backend
 cp .env.example .env
 ```
-Open `.env` in any editor and replace the placeholder with your real key
-from [console.anthropic.com](https://console.anthropic.com):
+Open `backend/.env` in any editor and replace the placeholder with your
+real key from [console.anthropic.com](https://console.anthropic.com):
 ```
 ANTHROPIC_API_KEY=sk-ant-your-real-key
 ```
 `.env` is gitignored — it will never get committed or pushed. Don't paste
 your key into chat, a commit, or anywhere else in the repo.
 
-## 5. Run it
+## 5. Run it — two terminal tabs
 
+**Tab 1 — backend:**
 ```bash
+cd featureforge/backend
 npm run dev
 ```
-You should see:
-```
-FeatureForge backend listening on http://localhost:4000
-```
-`npm run dev` auto-restarts on file changes (via `node --watch`), so keep
-this running in one terminal tab while we work.
+You should see `FeatureForge backend listening on http://localhost:4000`.
 
-## 6. Try it
+**Tab 2 — frontend:**
+```bash
+cd featureforge/frontend
+npm run dev
+```
+You should see Vite print `Local: http://localhost:5173/`. Open that URL
+in your browser — that's the actual app: pick a stream, describe a
+feature, click **Plan this feature**, review the diff, click **Apply to
+disk**.
 
-In a second terminal tab:
+Both auto-reload on file changes, so leave them running while we work.
+
+## 6. Or test the API directly with curl
+
 ```bash
 curl http://localhost:4000/api/health
 
@@ -80,10 +96,11 @@ curl -X POST http://localhost:4000/api/features/fullstack/plan \
   -H 'Content-Type: application/json' \
   -d '{"description":"scaffold an Express backend with a health check endpoint"}'
 ```
-The last one is the real test — with your key in place, that should return
-a JSON plan with a `summary` and a `files` array, each with a unified
-`diff`. Nothing gets written to `tripcraft-app/` until you also call
-`/api/features/fullstack/apply` with the `planId` it gives you.
+The last one is the same thing the "Plan this feature" button does — with
+your key in place, it returns a JSON plan with a `summary` and a `files`
+array, each with a unified `diff`. Nothing gets written to `tripcraft-app/`
+until you also call `/api/features/fullstack/apply` with the `planId` it
+gives you (or click **Apply to disk** in the UI).
 
 ## Staying in sync with this session
 

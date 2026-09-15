@@ -5,11 +5,19 @@
 // HTTP responses. Express is a library that makes that easy — you register
 // a "route" (a method + a path) and a function to handle it.
 import "dotenv/config";
+import cors from "cors";
 import express from "express";
 import { featuresRouter } from "./routes/features.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// The frontend (Module 6/7) runs on a different port (Vite's dev server),
+// which makes it a different "origin" as far as the browser is concerned —
+// without this, the browser blocks the frontend's requests before they
+// even reach us. Fine to leave wide open for local dev; a real deployment
+// would restrict this to the actual frontend's domain.
+app.use(cors());
 
 // Without this, req.body would be undefined for JSON requests — Express
 // doesn't parse the request body by default, you opt in per format.
