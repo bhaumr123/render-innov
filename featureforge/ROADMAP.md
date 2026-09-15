@@ -173,9 +173,14 @@ like "add a trip request form" through FeatureForge.
 - [x] Module 3b — multiple streams (`fullstack`, `k8s`), each sandboxed
 - [x] Module 6 — frontend foundations (React + Vite, form UI)
 - [x] Module 7 — frontend wired to backend (real diff viewer, apply button)
-- [ ] Module 3c — first real feature actually run through each stream
-      (needs your ANTHROPIC_API_KEY — this is the one thing left before
-      the full plan→diff→apply loop is proven end-to-end, UI included)
+- [x] Module 3c — first real feature run end-to-end: `fullstack` stream
+      generated a real Express backend into `tripcraft-app/backend/`
+      (package.json, app.js, server.js, health route, .gitignore) from a
+      live Claude API call. It runs — `GET /api/health` on :3001 responds
+      for real. Along the way we found and fixed a real gap: the API's
+      forced tool-use didn't guarantee our schema's `summary` field
+      actually came back populated, so `/plan` now defaults it instead of
+      silently returning `undefined`. Still to try: the `k8s` stream.
 - [ ] Module 4 — database (persist history)
 - [ ] Module 5 — auth
 - [ ] Module 8 — frontend auth

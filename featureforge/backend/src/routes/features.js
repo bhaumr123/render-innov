@@ -54,6 +54,15 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
     const context = buildContext(stream);
     const plan = await planFeature(stream, description, context);
 
+    // Our tool schema marks `summary` required, but forced tool-use only
+    // guarantees Claude's reply matches the schema's *shape* — it doesn't
+    // guarantee every required field is actually filled in. Seen this
+    // happen live: a real response came back with `files` populated and
+    // no `summary` at all. Never trust an LLM's structured output as fully
+    // as you'd trust a type system; validate/default the way you would
+    // for any other untrusted input.
+    const summary = plan.summary || "(Claude didn't provide a summary for this plan.)";
+
     const files = (plan.files || []).map((f) => {
       const before = readFile(stream, f.path);
       const after = f.action === "delete" ? "" : f.content ?? "";
@@ -67,7 +76,7 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
     });
 
     const planId = randomUUID();
-    pendingPlans.set(planId, { stream, description, summary: plan.summary, files });
+    pendingPlans.set(planId, { stream, description, summary, files });
 
     // Don't send raw `content` back to the client for the review step —
     // the diff already shows the change; sending full content too just
@@ -76,7 +85,7 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
     res.json({
       planId,
       stream,
-      summary: plan.summary,
+      summary,
       files: files.map(({ content, ...rest }) => rest),
     });
   } catch (err) {
