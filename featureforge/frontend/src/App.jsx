@@ -24,20 +24,38 @@ function DiffView({ diff }) {
   );
 }
 
-function FeatureForgeApp({ user, onLogOut }) {
+function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   const [streams, setStreams] = useState([]);
   const [stream, setStream] = useState("");
   const [description, setDescription] = useState("");
   const [plan, setPlan] = useState(null);
   const [applied, setApplied] = useState(null);
   const [history, setHistory] = useState([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [loading, setLoading] = useState(null); // "plan" | "apply" | null
   const [error, setError] = useState(null);
 
+  // A 401 here means the token expired or was revoked mid-session (it was
+  // valid enough to get past the initial /api/auth/me check, then stopped
+  // being valid) — every other failure is just shown as a normal error.
+  function handleApiError(err) {
+    if (err.status === 401) {
+      onSessionExpired();
+    } else {
+      setError(err.message);
+    }
+  }
+
   function loadHistory() {
     apiFetch("/api/features/history")
-      .then((data) => setHistory(data.requests || []))
-      .catch(() => {}); // the history panel is a nice-to-have, not worth an error banner
+      .then((data) => {
+        setHistory(data.requests || []);
+        setHistoryLoaded(true);
+      })
+      .catch((err) => {
+        if (err.status === 401) onSessionExpired();
+        // otherwise: the history panel is a nice-to-have, not worth an error banner
+      });
   }
 
   // useEffect runs after the component renders. An empty dependency array
@@ -49,7 +67,7 @@ function FeatureForgeApp({ user, onLogOut }) {
         setStreams(data.streams || []);
         if (data.streams?.length) setStream(data.streams[0].id);
       })
-      .catch(() => setError("Can't reach the backend. Is `npm run dev` running in featureforge/backend?"));
+      .catch(handleApiError);
     loadHistory();
   }, []);
 
@@ -67,7 +85,7 @@ function FeatureForgeApp({ user, onLogOut }) {
       setPlan(data);
       loadHistory();
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     } finally {
       setLoading(null);
     }
@@ -84,7 +102,7 @@ function FeatureForgeApp({ user, onLogOut }) {
       setApplied(data);
       loadHistory();
     } catch (err) {
-      setError(err.message);
+      handleApiError(err);
     } finally {
       setLoading(null);
     }
@@ -166,9 +184,9 @@ function FeatureForgeApp({ user, onLogOut }) {
         </section>
       )}
 
-      {history.length > 0 && (
-        <section className="history">
-          <h2>Your history</h2>
+      <section className="history">
+        <h2>Your history</h2>
+        {history.length > 0 ? (
           <ul className="history-list">
             {history.map((h) => (
               <li key={h.id} className="history-item">
@@ -183,8 +201,10 @@ function FeatureForgeApp({ user, onLogOut }) {
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        ) : (
+          historyLoaded && <p className="empty-state">No requests yet — plan one above to get started.</p>
+        )}
+      </section>
     </div>
   );
 }
@@ -192,24 +212,48 @@ function FeatureForgeApp({ user, onLogOut }) {
 export default function App() {
   const [user, setUser] = useState(null);
   const [checkedStorage, setCheckedStorage] = useState(false);
+  const [sessionMessage, setSessionMessage] = useState(null);
 
-  // We only ever stored a token, not the user — on reload, treat "a token
-  // exists" as "probably still logged in" and let the first API call prove
-  // it. If the token's expired, that call 401s and we fall back to login.
+  function handleSessionExpired() {
+    clearToken();
+    setUser(null);
+    setSessionMessage("Your session expired — please log in again.");
+  }
+
+  // A token in localStorage might be expired, revoked, or just wrong — the
+  // only way to know is to ask the backend, via the one route built for
+  // exactly this (GET /api/auth/me). No token at all skips straight to the
+  // login screen without a wasted request.
   useEffect(() => {
-    if (getToken()) setUser({ email: "…" });
-    setCheckedStorage(true);
+    const token = getToken();
+    if (!token) {
+      setCheckedStorage(true);
+      return;
+    }
+    apiFetch("/api/auth/me")
+      .then((data) => setUser(data.user))
+      .catch(() => handleSessionExpired())
+      .finally(() => setCheckedStorage(true));
   }, []);
 
   if (!checkedStorage) return null;
 
   if (!user) {
-    return <Auth onAuthed={setUser} />;
+    return (
+      <Auth
+        message={sessionMessage}
+        onAuthed={(u) => {
+          setSessionMessage(null);
+          setUser(u);
+        }}
+      />
+    );
   }
 
   return (
     <FeatureForgeApp
       user={user}
+      onSessionExpired={handleSessionExpired}
       onLogOut={() => {
         clearToken();
         setUser(null);

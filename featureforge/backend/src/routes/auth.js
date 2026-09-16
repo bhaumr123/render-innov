@@ -1,6 +1,6 @@
 import express from "express";
 import { prisma } from "../lib/prisma.js";
-import { hashPassword, verifyPassword, signToken } from "../lib/auth.js";
+import { hashPassword, verifyPassword, signToken, requireAuth } from "../lib/auth.js";
 
 export const authRouter = express.Router();
 
@@ -50,4 +50,12 @@ authRouter.post("/login", async (req, res) => {
   if (!valid) return res.status(401).json(invalid);
 
   res.json({ token: signToken(user), user: { id: user.id, email: user.email } });
+});
+
+// GET /api/auth/me — lets a client that only has a stored token find out
+// whether it's still valid, and who it belongs to, without guessing.
+// This is what makes "stay logged in across a page reload" honest instead
+// of just assuming a token in localStorage still works.
+authRouter.get("/me", requireAuth, (req, res) => {
+  res.json({ user: req.user });
 });

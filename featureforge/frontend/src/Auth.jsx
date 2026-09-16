@@ -3,7 +3,7 @@ import { apiFetch, setToken } from "./api.js";
 
 // The login gate. Module 5's frontend half: no token, no app — everything
 // in App.jsx now assumes a logged-in user, same as the backend routes do.
-export default function Auth({ onAuthed }) {
+export default function Auth({ onAuthed, message }) {
   const [mode, setMode] = useState("login"); // "login" | "signup"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,6 +34,8 @@ export default function Auth({ onAuthed }) {
         <h1>FeatureForge</h1>
         <p>Describe a feature. Review the diff. Apply it for real.</p>
       </header>
+
+      {message && <p className="session-notice">{message}</p>}
 
       <form onSubmit={handleSubmit} className="request-form">
         <div className="auth-tabs">

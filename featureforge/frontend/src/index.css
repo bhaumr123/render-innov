@@ -21,10 +21,23 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
+/* A visible focus ring matters more here than most pages — this whole
+   app is a form-heavy review workflow you're meant to move through with
+   the keyboard, not just point-and-click. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .page {
   max-width: 760px;
   margin: 0 auto;
   padding: 32px 20px 60px;
+}
+
+@media (max-width: 420px) {
+  .page { padding: 20px 16px 48px; }
+  header h1 { font-size: 22px; }
 }
 
 header h1 { margin: 0 0 4px; font-size: 26px; }
@@ -82,6 +95,7 @@ header p { margin: 0 0 28px; color: var(--muted); }
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 20px;
+  box-shadow: 0 1px 2px rgba(26, 39, 51, 0.04);
 }
 
 .request-form label {
@@ -116,7 +130,10 @@ button {
   color: white;
   cursor: pointer;
   align-self: flex-start;
+  transition: filter 0.1s ease, transform 0.1s ease;
 }
+button:hover:not(:disabled) { filter: brightness(0.92); }
+button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: 0.55; cursor: default; }
 
 .error {
@@ -128,6 +145,25 @@ button:disabled { opacity: 0.55; cursor: default; }
   font-size: 13.5px;
 }
 
+.session-notice {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: #fdf1de;
+  color: #a5620f;
+  font-size: 13.5px;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
 .plan { margin-top: 28px; display: flex; flex-direction: column; gap: 16px; }
 .plan h2 { margin: 0; font-size: 18px; }
 .summary { margin: 0; color: var(--muted); }
@@ -137,6 +173,7 @@ button:disabled { opacity: 0.55; cursor: default; }
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(26, 39, 51, 0.04);
 }
 .file-change__head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .file-change__head code { font-size: 13px; }
@@ -180,7 +217,7 @@ button:disabled { opacity: 0.55; cursor: default; }
   font-size: 13.5px;
 }
 
-.history { margin-top: 8px; }
+.history { margin-top: 28px; }
 .history h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); }
 .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .history-item {
