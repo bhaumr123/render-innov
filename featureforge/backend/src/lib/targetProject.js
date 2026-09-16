@@ -24,12 +24,18 @@ export const STREAMS = {
     label: "Full-stack app",
     description: "The TripCraft app itself: backend API, frontend, database.",
     root: resolveRoot("tripcraft-app"),
+    // Streams whose files Claude should be able to READ (never write) as
+    // reference context. Found the hard way: without this, the k8s stream
+    // wrote a Dockerfile CMD and a health-probe path that didn't match
+    // what the fullstack stream had actually built — it was guessing.
+    referenceStreams: [],
   },
   k8s: {
     label: "Kubernetes deployment",
     description:
       "Deployment manifests for the app: Dockerfiles, Deployments, Services, etc.",
     root: resolveRoot("k8s-deploy"),
+    referenceStreams: ["fullstack"],
   },
 };
 
@@ -50,6 +56,18 @@ function walk(dir, base = dir, out = []) {
     }
   }
   return out;
+}
+
+// Catches a real bug we hit live: Claude prefixed a k8s-stream path with
+// "k8s-deploy/" — the stream's own root directory name — even though every
+// path is already relative to that root, producing
+// k8s-deploy/k8s-deploy/base/Dockerfile. We fixed the prompt that caused
+// it, but a prompt fix isn't a guarantee; this is the backstop that turns
+// a repeat into a loud, specific error instead of a silently wrong path.
+export function looksLikeDuplicatedRoot(streamId, relPath) {
+  const rootName = path.basename(STREAMS[streamId].root);
+  const firstSegment = relPath.split("/")[0];
+  return firstSegment === rootName;
 }
 
 // Refuse to touch anything outside the stream's own root, even if a caller
@@ -102,4 +120,18 @@ export function buildContext(streamId) {
     files[relPath] = readFile(streamId, relPath);
   }
   return { tree, files };
+}
+
+// Read-only context from another stream's target directory — e.g. the k8s
+// stream reading what fullstack actually built, so a Deployment's CMD and
+// probe paths match the real app instead of a guess. Building this reuses
+// buildContext() itself; nothing here can write anywhere, it just labels
+// the result by which stream it came from.
+export function buildReferenceContext(streamId) {
+  const refs = STREAMS[streamId].referenceStreams || [];
+  const context = {};
+  for (const refId of refs) {
+    context[refId] = buildContext(refId);
+  }
+  return context;
 }

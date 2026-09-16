@@ -71,6 +71,10 @@ const COMMON_RULES = [
   "- Prefer creating new small files over growing existing ones.",
   "- Always respond by calling the write_code_changes tool. Never reply",
   "  with plain text.",
+  "- Every `path` is already relative to this stream's own project root.",
+  "  Never prefix a path with that root directory's own name (e.g. write",
+  "  `base/Dockerfile`, not `k8s-deploy/base/Dockerfile` — the tree shown",
+  "  to you below already starts inside that root).",
 ];
 
 // Each stream gets its own system prompt: same tool, same JSON schema,
@@ -101,7 +105,7 @@ const STREAM_PROMPTS = {
     ...COMMON_RULES,
     "- Write valid Kubernetes YAML (apiVersion, kind, metadata, spec) or a",
     "  Dockerfile, one resource (or one Dockerfile) per file, organized",
-    "  under directories like k8s-deploy/base/.",
+    "  under a subdirectory like `base/` (e.g. `base/Dockerfile`).",
     "- Every container spec needs resource requests/limits and, for a long-",
     "  running service, liveness and readiness probes.",
     "- Prefer standard, boring Kubernetes objects (Deployment, Service,",
@@ -109,6 +113,10 @@ const STREAM_PROMPTS = {
     "  provider's extensions unless the request specifically asks for one.",
     "- Never write real secret values into a manifest — use a placeholder",
     "  and say in `explanation` that it must be filled in out-of-band.",
+    "- If a reference app's contents are provided below, they are the",
+    "  ground truth: match its actual entry point, port, and route paths",
+    "  exactly. Never guess a filename or path that reference context",
+    "  already answers.",
   ].join("\n"),
 };
 
@@ -116,25 +124,38 @@ function buildSystemPrompt(streamId) {
   return STREAM_PROMPTS[streamId];
 }
 
-function buildUserMessage(description, tree, files) {
+function describeContext(label, tree, files) {
   const treeText = tree.length
     ? tree.map((p) => `  ${p}`).join("\n")
     : "  (empty — nothing has been built yet)";
-  const filesText = tree
-    .map((p) => `--- ${p} ---\n${files[p]}`)
-    .join("\n\n");
-
+  const filesText = tree.map((p) => `--- ${p} ---\n${files[p]}`).join("\n\n");
   return [
-    `Feature requested: ${description}`,
-    "",
-    "Current project file tree:",
+    `${label} file tree:`,
     treeText,
     "",
-    filesText ? "Current file contents:\n\n" + filesText : "",
+    filesText ? `${label} file contents:\n\n${filesText}` : "",
   ].join("\n");
 }
 
-export async function planFeature(streamId, description, { tree, files }) {
+function buildUserMessage(description, tree, files, referenceContext) {
+  const sections = [
+    `Feature requested: ${description}`,
+    "",
+    describeContext("Current project", tree, files),
+  ];
+
+  for (const [refId, ref] of Object.entries(referenceContext || {})) {
+    sections.push(
+      "",
+      `--- Reference: the "${refId}" stream (read-only — you are not writing to this) ---`,
+      describeContext(`"${refId}" stream`, ref.tree, ref.files)
+    );
+  }
+
+  return sections.join("\n");
+}
+
+export async function planFeature(streamId, description, { tree, files }, referenceContext) {
   const client = getClient();
   const response = await client.messages.create({
     model: MODEL,
@@ -143,7 +164,10 @@ export async function planFeature(streamId, description, { tree, files }) {
     tools: [CHANGE_TOOL],
     tool_choice: { type: "tool", name: "write_code_changes" },
     messages: [
-      { role: "user", content: buildUserMessage(description, tree, files) },
+      {
+        role: "user",
+        content: buildUserMessage(description, tree, files, referenceContext),
+      },
     ],
   });
 

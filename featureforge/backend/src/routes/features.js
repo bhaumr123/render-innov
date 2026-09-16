@@ -6,6 +6,8 @@ import {
   STREAMS,
   isValidStream,
   buildContext,
+  buildReferenceContext,
+  looksLikeDuplicatedRoot,
   readFile,
   writeFile,
   deleteFile,
@@ -52,7 +54,8 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
 
   try {
     const context = buildContext(stream);
-    const plan = await planFeature(stream, description, context);
+    const referenceContext = buildReferenceContext(stream);
+    const plan = await planFeature(stream, description, context, referenceContext);
 
     // Our tool schema marks `summary` required, but forced tool-use only
     // guarantees Claude's reply matches the schema's *shape* — it doesn't
@@ -62,6 +65,18 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
     // as you'd trust a type system; validate/default the way you would
     // for any other untrusted input.
     const summary = plan.summary || "(Claude didn't provide a summary for this plan.)";
+
+    const badPaths = (plan.files || [])
+      .map((f) => f.path)
+      .filter((p) => looksLikeDuplicatedRoot(stream, p));
+    if (badPaths.length) {
+      return res.status(502).json({
+        error:
+          `Claude prefixed ${badPaths.length} path(s) with the "${stream}" ` +
+          `stream's own root directory name (e.g. "${badPaths[0]}") — that ` +
+          "would double-nest on apply. Rejecting this plan; try /plan again.",
+      });
+    }
 
     const files = (plan.files || []).map((f) => {
       const before = readFile(stream, f.path);

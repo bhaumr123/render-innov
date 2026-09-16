@@ -173,14 +173,28 @@ like "add a trip request form" through FeatureForge.
 - [x] Module 3b — multiple streams (`fullstack`, `k8s`), each sandboxed
 - [x] Module 6 — frontend foundations (React + Vite, form UI)
 - [x] Module 7 — frontend wired to backend (real diff viewer, apply button)
-- [x] Module 3c — first real feature run end-to-end: `fullstack` stream
-      generated a real Express backend into `tripcraft-app/backend/`
-      (package.json, app.js, server.js, health route, .gitignore) from a
-      live Claude API call. It runs — `GET /api/health` on :3001 responds
-      for real. Along the way we found and fixed a real gap: the API's
-      forced tool-use didn't guarantee our schema's `summary` field
-      actually came back populated, so `/plan` now defaults it instead of
-      silently returning `undefined`. Still to try: the `k8s` stream.
+- [x] Module 3c — first real feature run end-to-end, both streams:
+  - `fullstack` generated a real Express backend into
+    `tripcraft-app/backend/` (package.json, app.js, server.js, health
+    route, .gitignore) from a live Claude API call. It runs —
+    `GET /api/health` on :3001 responds for real.
+  - `k8s` generated a Dockerfile, Deployment, Service, and ConfigMap into
+    `k8s-deploy/base/`. Two real bugs found and fixed along the way:
+    1. Forced tool-use didn't guarantee our schema's `summary` field came
+       back populated — `/plan` now defaults it instead of silently
+       returning `undefined`.
+    2. The `k8s` stream had no visibility into what `fullstack` actually
+       built, so its first attempt guessed a wrong entry point
+       (`server.js` vs. the real `src/server.js`) and a wrong health-check
+       path (`/healthz` vs. the real `/api/health`). Fixed by giving
+       streams an optional `referenceStreams` list — `k8s` now reads
+       `fullstack`'s files as read-only context. Second attempt matched
+       reality exactly. Also caught (and now guard against) a path bug:
+       Claude prefixed paths with the stream's own root directory name
+       ("k8s-deploy/base/..." on top of the root already being
+       k8s-deploy/), which would have double-nested every file — fixed
+       the prompt and added `looksLikeDuplicatedRoot()` as a backstop
+       that rejects a plan outright rather than silently mis-writing it.
 - [ ] Module 4 — database (persist history)
 - [ ] Module 5 — auth
 - [ ] Module 8 — frontend auth
