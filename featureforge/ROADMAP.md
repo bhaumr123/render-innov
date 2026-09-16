@@ -213,9 +213,37 @@ like "add a trip request form" through FeatureForge.
     (`Auth.jsx`), a token stored in `localStorage` and attached to every
     request (`api.js`), and a simple history panel in the main view.
     Compiles clean, no errors.
-- [ ] Module 8 — frontend auth, properly: protected routing, a real
-      "session expired, please log in again" flow (right now an expired
-      token just surfaces as an error banner), logout confirmation, etc.
-- [ ] Module 9 — polish
-- [ ] Module 10 — testing
+- [x] Module 8 — frontend auth, properly. New `GET /api/auth/me`
+      (protected) so the frontend can confirm a stored token still works
+      instead of assuming it does; `apiFetch` now attaches the HTTP status
+      to thrown errors. App.jsx validates on load and bounces to login
+      with a visible "your session expired" message on any 401, including
+      one hit mid-session. Verified: no-token, garbage-token, and
+      valid-token cases against `/api/auth/me` all behave correctly.
+- [x] Module 9 — polish. Visible `:focus-visible` ring (this is a
+      keyboard-heavy review workflow), button hover/active states, subtle
+      card shadows, a real "no requests yet" empty state instead of just
+      hiding the history section, consistent spacing, a narrow-screen
+      tweak.
+- [x] Module 10 — testing. Split `server.js` into `app.js` (the Express
+      app) + a thin `server.js` (just `app.listen`), so the app is
+      importable without binding a real port. Backend: Vitest + supertest,
+      16 tests — unit tests for `unifiedDiff` and for
+      `looksLikeDuplicatedRoot` (a regression test for the real k8s
+      path-duplication bug), plus a real integration suite for signup/
+      login/`/api/auth/me` against a dedicated throwaway SQLite database
+      (never `dev.db` — verified the real one was untouched afterward).
+      Frontend: Vitest + React Testing Library, `DiffView` extracted to
+      its own file and tested directly (correctly classifies `+`/`-`
+      content lines vs. the `---`/`+++` patch headers that start with the
+      same characters). `npm run build` verified to succeed.
+  - `npm audit` (both backend and frontend) flags several vulnerabilities
+    after adding the test tooling — all inside `vitest`'s own dependency
+    tree (esbuild/vite dev-server issues, dev-only) plus one in `diff`
+    (a DoS in `parsePatch`/`applyPatch`). Checked: we only ever call
+    `createTwoFilesPatch`, never `parsePatch` or `applyPatch`, so that
+    specific path doesn't apply to how we use it. Left as-is rather than
+    `npm audit fix --force`, which would pull in breaking major versions
+    for no real safety gain here — worth re-checking before Module 11
+    actually ships anywhere public.
 - [ ] Module 11 — deployment
