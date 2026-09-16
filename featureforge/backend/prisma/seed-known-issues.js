@@ -100,6 +100,24 @@ const ISSUES = [
       "and throwing a clear 502 when it's present but malformed, instead of " +
       "assuming 'truthy therefore usable'.",
   },
+  {
+    title: "setup-offline.sh's .env check missed .env.example's own commented-out examples",
+    area: "tooling",
+    description:
+      "scripts/setup-offline.sh writes LLM_PROVIDER/OLLAMA_MODEL into " +
+      "backend/.env, matching an existing line with `grep -q \"^LLM_PROVIDER=\"` " +
+      "before deciding whether to update it in place or append a new one. But " +
+      ".env.example already ships both as commented-out examples (`# " +
+      "LLM_PROVIDER=ollama`) — the anchored pattern doesn't match a line " +
+      "starting with `#`, so a fresh .env (copied straight from the template) " +
+      "got a redundant, disconnected LLM_PROVIDER=ollama line appended at the " +
+      "bottom instead of the existing example being turned on. Functionally " +
+      "harmless (the appended line still wins) but messy, and would confuse " +
+      "anyone reading the file afterward. Found by actually running the " +
+      "script against a scratch .env, not by reading the sed pattern. Fixed " +
+      "by matching an optional leading `#` and whitespace too, and verified " +
+      "idempotent (re-running with a different model updates in place).",
+  },
 ];
 
 async function main() {

@@ -19,6 +19,29 @@ settings (`backend/src/lib/ollamaConfig.js`):
 Both are the one piece of FeatureForge that needs something installed
 outside `npm install` — everything else in the repo is self-contained.
 
+## The fast path: one script
+
+For offline plan generation specifically, `scripts/setup-offline.sh` does
+every step below in one command — installs Ollama if it's missing, starts
+the server, pulls a model, wires `LLM_PROVIDER=ollama` into
+`backend/.env`, and runs a real test plan to confirm it worked:
+
+```bash
+bash featureforge/scripts/setup-offline.sh              # llama3.2:1b — fast, ~1.3GB
+bash featureforge/scripts/setup-offline.sh llama3.1      # better quality, ~4.7GB, slower
+```
+
+Run it on your own machine with real internet access — this needs to
+reach `ollama.com` to install Ollama and pull a model, which a shared
+cloud dev sandbox (like the one this project itself was built in) usually
+blocks. Safe to re-run any time, including with a different model
+argument — it only ever updates `LLM_PROVIDER`/`OLLAMA_MODEL` in place,
+never duplicates them.
+
+The rest of this doc is the same steps done by hand, plus the
+self-improvement agent's setup (which the script above doesn't touch,
+since it's a separate feature — see step 3 below).
+
 ## 1. Install Ollama
 
 - **macOS**: `brew install ollama`, or download from https://ollama.com/download
@@ -132,3 +155,18 @@ real result — couldn't be exercised end-to-end in that sandbox. On a
 normal machine with normal internet access, `ollama pull` just works, and
 `npm run test:offline-plan` / `npm run test:analyzer` above will get you
 a real result, not just a clean error path.
+
+`scripts/setup-offline.sh` itself was run for real in that same sandbox,
+as far as its network allowed — Node/Ollama detection, starting the
+server (including re-running it to confirm the "already running" branch),
+and `ollama pull` correctly hitting the same blocked-registry error
+(`set -euo pipefail` stopped the script there, exactly like it would for
+anyone without internet access). That run caught a real bug before it
+ever reached anyone: the script's original `.env` check only matched an
+*uncommented* `LLM_PROVIDER=`/`OLLAMA_MODEL=` line, but `.env.example`
+ships both already present as commented-out examples — so a fresh `.env`
+would get a redundant, disconnected line appended at the bottom instead
+of the existing example being turned on. Fixed to match the commented
+form too and verified against a scratch `.env` for both a first-time run
+and a re-run with a different model (confirming it updates in place
+rather than duplicating).
