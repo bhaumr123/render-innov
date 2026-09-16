@@ -138,6 +138,24 @@ async function runPlan(stream, description, userId, { onDelta } = {}) {
   // other untrusted input.
   const summary = plan.summary || "(Claude didn't provide a summary for this plan.)";
 
+  // Seen live on a large multi-page request (a "shop engine" site: 5 pages
+  // + real cart JS): the tool call's JSON got cut off in a way that left
+  // `files` as a non-array truthy value instead of cleanly missing or
+  // empty — `(plan.files || [])` doesn't catch that, since a truthy value
+  // skips the fallback, and `.map` on it throws a raw TypeError instead of
+  // a clean response. Same family of bug as the missing-summary case
+  // above: forced tool-use guarantees shape, not that a large response
+  // actually finished cleanly.
+  if (plan.files !== undefined && !Array.isArray(plan.files)) {
+    const err = new Error(
+      "Claude's response for this plan looked truncated or malformed (`files` wasn't a " +
+        "list). This tends to happen on requests that need a lot of output, like a multi-" +
+        "page site — try again, or split the request into smaller pieces."
+    );
+    err.status = 502;
+    throw err;
+  }
+
   const badPaths = (plan.files || [])
     .map((f) => f.path)
     .filter((p) => looksLikeDuplicatedRoot(stream, p));

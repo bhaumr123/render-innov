@@ -9,6 +9,7 @@
 // 2. The API key only ever lives here, read from process.env. It never
 //    reaches the frontend, and it's never logged.
 import Anthropic from "@anthropic-ai/sdk";
+import { buildWebsiteTypeGuide } from "./websiteTypeLibrary.js";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
@@ -185,12 +186,21 @@ const STREAM_PROMPTS = {
     "  only write text. Use CSS (gradients, shapes, an emoji, a system icon",
     "  font) for visual elements, or a clearly-labeled placeholder, and say",
     "  in `explanation` when a real photo/logo still needs adding locally.",
-    "- Match the requested site type's real-world shape: a landing page",
-    "  needs a hero + a clear call-to-action; a portfolio needs a project",
-    "  grid; a blog needs a post list template AND at least one real post",
-    "  page linked from it; a storefront needs a product grid with prices",
-    "  (checkout/payment is out of scope here — that's the fullstack",
-    "  stream's job; note that in `explanation` if it comes up).",
+    "- Match the requested site type's real-world shape — this is a",
+    "  standing library of known site types, not a guess from the type's",
+    "  name alone. Use the closest match below; if the request is a hybrid",
+    "  or doesn't match any of these, combine the closest ones sensibly and",
+    "  say so in `summary`.",
+    "",
+    buildWebsiteTypeGuide(),
+    "",
+    "- 'Shop / cart engine' and 'E-commerce storefront' look similar but are",
+    "  NOT interchangeable: only build the real working localStorage cart",
+    "  (add/remove/qty/subtotal) when the request is a shop/cart engine, a",
+    "  'real'/'working' cart, or otherwise clearly wants actual cart",
+    "  mechanics rather than a static catalog. Default to the storefront",
+    "  (display-only) shape when it's ambiguous — don't build cart state",
+    "  logic nobody asked for.",
   ].join("\n"),
 };
 
@@ -268,10 +278,17 @@ export async function planFeature(promptSource, description, { tree, files }, re
     throw new Error("Claude did not return a structured plan.");
   }
   if (response.stop_reason === "max_tokens") {
-    throw new Error(
+    const err = new Error(
       `Claude's response was cut off at the ${MAX_TOKENS_NON_STREAMING}-token limit before finishing ` +
         "the plan — try asking for a smaller change, or splitting this into separate requests."
     );
+    // A known, expected failure mode with a clear, actionable message —
+    // not a bug in this code, so it shouldn't feed the self-improvement
+    // agent's "unexpected error" log the way an actual crash would (see
+    // maybeLogFailure in routes/features.js, which skips anything with a
+    // .status already set).
+    err.status = 502;
+    throw err;
   }
   return toolUse.input;
 }
@@ -318,10 +335,12 @@ export async function planFeatureStream(
     throw new Error("Claude did not return a structured plan.");
   }
   if (finalMessage.stop_reason === "max_tokens") {
-    throw new Error(
+    const err = new Error(
       `Claude's response was cut off at the ${MAX_TOKENS_STREAMING}-token limit before finishing ` +
         "the plan — try asking for a smaller change, or splitting this into separate requests."
     );
+    err.status = 502; // expected failure mode, not a bug — see the non-streaming twin above
+    throw err;
   }
   return toolUse.input;
 }

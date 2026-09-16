@@ -13,6 +13,35 @@ const TYPES = [
   { id: "custom", label: "Custom stream" },
 ];
 
+// Mirrors the backend's site-type library (backend/src/lib/
+// websiteTypeLibrary.js) by label — the frontend and backend are separate
+// deployables with no shared module today, so this list is kept in sync
+// by hand, same as TYPES above already is with the backend's stream list.
+// The backend library is the one with the actual structural guidance per
+// type; this is just what a person picks from.
+const WEBSITE_SITE_TYPES = [
+  "Landing page",
+  "Portfolio",
+  "Blog",
+  "Business / marketing site",
+  "E-commerce storefront",
+  "Shop / cart engine",
+  "Restaurant / cafe",
+  "Real estate listings",
+  "Event / conference",
+  "Nonprofit / donation",
+  "SaaS / app product site",
+  "Documentation site",
+  "Personal resume / CV",
+  "News / magazine",
+  "Directory / listings",
+  "Wedding / personal event",
+  "Agency / freelancer services",
+  "App / download landing page",
+  "Coming soon / waitlist",
+  "Other",
+];
+
 // Turns the guided fields into the same kind of plain-English description
 // the backend already expects — no API change needed. The structure just
 // makes sure nothing the domain cares about gets left out.
@@ -299,12 +328,9 @@ export default function FeatureRequestForm({
           <label>
             Site type
             <select value={website.siteType} onChange={(e) => setWebsite({ ...website, siteType: e.target.value })}>
-              <option>Landing page</option>
-              <option>Portfolio</option>
-              <option>Blog</option>
-              <option>Business / marketing site</option>
-              <option>E-commerce storefront</option>
-              <option>Other</option>
+              {WEBSITE_SITE_TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
             </select>
           </label>
           <label>

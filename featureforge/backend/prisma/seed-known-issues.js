@@ -85,6 +85,21 @@ const ISSUES = [
       "truncated response now throws a clear error instead of returning an " +
       "empty plan that looks like Claude just had nothing to say.",
   },
+  {
+    title: "`(plan.files || []).map` crashed when files came back as a raw string",
+    area: "features-api",
+    description:
+      "Testing the new website 'Shop / cart engine' type (a request big " +
+      "enough to need 5 real pages plus cart JS) against the real API 3 " +
+      "times: 2 runs came back clean, 1 came back with `files` as an " +
+      "unparsed JSON *string* instead of a parsed array — a different " +
+      "truncation shape than the `{}` case already handled. `(plan.files " +
+      "|| [])` doesn't catch this: a truthy string skips the `[]` fallback, " +
+      "so `.map()` threw a raw TypeError instead of a clean error response. " +
+      "Fixed in runPlan() by checking `Array.isArray(plan.files)` explicitly " +
+      "and throwing a clear 502 when it's present but malformed, instead of " +
+      "assuming 'truthy therefore usable'.",
+  },
 ];
 
 async function main() {

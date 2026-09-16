@@ -437,4 +437,45 @@ like "add a trip request form" through FeatureForge.
     plan. Seeded as a 7th `KnownIssue` — the self-improvement agent's
     memory now includes a bug found while building the feature right next
     to it in this same roadmap entry.
+  - **Website type library**: `backend/src/lib/websiteTypeLibrary.js` —
+    a standing, structural (not decorative) reference for 19 real-world
+    site types the 'website' stream now knows explicitly, from the
+    original handful up through restaurant/cafe, real estate, event,
+    nonprofit, SaaS, documentation, resume, news, directory, wedding,
+    agency, app-landing, coming-soon — and, at the user's specific
+    request, both **e-commerce** shapes: a display-only
+    "E-commerce storefront" and a genuinely distinct "Shop / cart engine"
+    (real client-side cart state — add/remove/qty/subtotal via
+    localStorage — not just a styled cart icon). Each entry lists the
+    sections/pages that type actually needs, so `buildWebsiteTypeGuide()`
+    renders the whole library straight into the system prompt as ground
+    truth, replacing the old one-size "match the site type" bullet.
+    `FeatureRequestForm.jsx`'s "Site type" dropdown mirrors the same
+    labels by hand (frontend/backend are separate deployables with no
+    shared module today).
+    **Verified live against the real API**, not just written and hoped
+    for: a "Shop / cart engine" request for a tee-shirt shop (5 pages —
+    home, product grid, product detail, cart, checkout) came back with
+    genuine working cart JS (`ptGetCart()`/`ptUpdateCartBadge()` backed by
+    `localStorage`, quantity controls, a checkout page with real client-
+    side validation and a success state) — exactly the mechanical
+    distinction the library asks for, not just a re-skinned storefront.
+    **Two more real bugs found running it 3x in a row** (same
+    "large-output pressure" family as the max_tokens bug just above,
+    which this type's bigger asks make easier to hit):
+    1. The non-streaming `/plan` endpoint's now-16000-token ceiling still
+       wasn't enough for a full shop-engine plan — correctly caught by
+       the stop_reason check added for the max_tokens bug, but it had no
+       `err.status`, so `maybeLogFailure` mistook this well-understood,
+       clearly-messaged failure for an unexpected one. Fixed by setting
+       `err.status = 502` on both truncation errors, same as every other
+       deliberately-thrown domain error in this codebase already does.
+    2. Rarer and worse: one run (1 of 3) came back with `files` as a raw,
+       *unparsed JSON string* instead of a parsed array — a different
+       truncation shape than the `{}` case. `(plan.files || [])` doesn't
+       catch a truthy string, so `.map()` threw a raw TypeError instead of
+       a clean response. Fixed in `runPlan()` with an explicit
+       `Array.isArray(plan.files)` check that throws a clear 502 instead
+       of assuming "truthy therefore usable." Both seeded as `KnownIssue`
+       rows 7 and 8.
   - Still open: run tests before applying, undo/rollback, SQLite → Postgres.
