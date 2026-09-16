@@ -325,4 +325,12 @@ like "add a trip request form" through FeatureForge.
     needed. Verified live: submitted a real Kubernetes ConfigMap request
     through the guided form, watched it stream, applied it, confirmed
     the exact YAML on disk.
+  - **Studio dashboard**: `Dashboard.jsx` — a real home screen with a card
+    per build type (build count + last-built date, computed client-side
+    from history already being loaded), replacing "land straight on a
+    form" with "land on an overview, pick what you're building." Simple
+    view-state navigation (`dashboard` | `build`) since there's no router
+    yet. Verified live: clicking a card opens the build screen
+    pre-selected to that type; the type's own history shows instead of
+    everything mixed together.
   - Still open: run tests before applying, undo/rollback, SQLite → Postgres.
