@@ -3,11 +3,11 @@ import { apiFetch, apiFetchStream, getToken, clearToken } from "./api.js";
 import Auth from "./Auth.jsx";
 import DiffView from "./DiffView.jsx";
 import NewStreamForm from "./NewStreamForm.jsx";
+import FeatureRequestForm from "./FeatureRequestForm.jsx";
 
 function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   const [streams, setStreams] = useState([]);
   const [stream, setStream] = useState("");
-  const [description, setDescription] = useState("");
   const [plan, setPlan] = useState(null);
   const [applied, setApplied] = useState(null);
   const [history, setHistory] = useState([]);
@@ -15,6 +15,7 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   const [loading, setLoading] = useState(null); // "plan" | "apply" | null
   const [streamingText, setStreamingText] = useState("");
   const [showNewStream, setShowNewStream] = useState(false);
+  const [presetCustomStream, setPresetCustomStream] = useState(null);
   const [error, setError] = useState(null);
 
   // A 401 here means the token expired or was revoked mid-session (it was
@@ -30,12 +31,7 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
 
   function loadStreams() {
     return apiFetch("/api/features/streams")
-      .then((data) => {
-        setStreams(data.streams || []);
-        if (data.streams?.length && !data.streams.some((s) => s.id === stream)) {
-          setStream(data.streams[0].id);
-        }
-      })
+      .then((data) => setStreams(data.streams || []))
       .catch(handleApiError);
   }
 
@@ -64,15 +60,19 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   // apiFetchStream for why they're only display text, not parseable on
   // their own), and the final "done" event carries the exact same shape
   // the non-streaming /plan endpoint used to return directly.
-  async function handlePlan(e) {
-    e.preventDefault();
+  //
+  // streamId/description come from FeatureRequestForm, which composes
+  // them from whichever guided form (or the custom free-text box) the
+  // user filled in — this function doesn't need to know which.
+  async function handlePlan(streamId, description) {
+    setStream(streamId);
     setLoading("plan");
     setError(null);
     setPlan(null);
     setApplied(null);
     setStreamingText("");
     try {
-      await apiFetchStream(`/api/features/${stream}/plan/stream`, {
+      await apiFetchStream(`/api/features/${streamId}/plan/stream`, {
         body: JSON.stringify({ description }),
         onDelta: (text) => setStreamingText((prev) => prev + text),
         onDone: (data) => {
@@ -125,45 +125,20 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
         </div>
       </header>
 
-      <form onSubmit={handlePlan} className="request-form">
-        <label>
-          Stream
-          <select value={stream} onChange={(e) => setStream(e.target.value)}>
-            {streams.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-                {s.custom ? " (custom)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Feature request
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. scaffold an Express backend with a health check endpoint"
-            rows={3}
-            required
-          />
-        </label>
-
-        <div className="form-actions">
-          <button type="submit" disabled={loading === "plan" || !stream}>
-            {loading === "plan" ? "Asking Claude…" : "Plan this feature"}
-          </button>
-          <button type="button" className="link-btn" onClick={() => setShowNewStream((v) => !v)}>
-            {showNewStream ? "Cancel" : "+ New target project"}
-          </button>
-        </div>
-      </form>
+      <FeatureRequestForm
+        streams={streams}
+        loading={loading}
+        onSubmit={handlePlan}
+        onToggleNewStream={() => setShowNewStream((v) => !v)}
+        showingNewStream={showNewStream}
+        presetCustomStream={presetCustomStream}
+      />
 
       {showNewStream && (
         <NewStreamForm
           onCreated={(newStream) => {
             setShowNewStream(false);
-            loadStreams().then(() => setStream(newStream.id));
+            loadStreams().then(() => setPresetCustomStream(newStream.id));
           }}
           onError={handleApiError}
         />

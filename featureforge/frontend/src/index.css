@@ -66,7 +66,7 @@ header p { margin: 0 0 28px; color: var(--muted); }
   font-size: 13px;
 }
 
-.auth-tabs { display: flex; gap: 6px; margin-bottom: 4px; }
+.auth-tabs, .type-tabs { display: flex; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
 .tab {
   background: var(--bg);
   color: var(--muted);
@@ -75,6 +75,13 @@ header p { margin: 0 0 28px; color: var(--muted); }
   font-size: 13px;
 }
 .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.checkbox-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+.checkbox-label input { width: auto; }
 
 .request-form input {
   font: inherit;
@@ -263,5 +270,5 @@ button:disabled { opacity: 0.55; cursor: default; }
   padding: 8px 12px;
   font-size: 12.5px;
 }
-.history-desc { flex: 1; min-width: 160px; }
+.history-desc { flex: 1; min-width: 160px; white-space: pre-line; }
 .history-meta { color: var(--muted); }
