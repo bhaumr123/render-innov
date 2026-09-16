@@ -1,0 +1,40 @@
+// Module 4: the data model. Two tables, one relationship.
+//
+// A User owns many FeatureRequests (one-to-many) — every plan you ask for,
+// and whether it was ever applied, is now remembered instead of living
+// only in server memory until the next restart.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  passwordHash    String
+  createdAt       DateTime         @default(now())
+  featureRequests FeatureRequest[]
+}
+
+model FeatureRequest {
+  id          String    @id @default(uuid())
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+  stream      String
+  description String
+  summary     String
+  // The plan's files (path, action, explanation, diff, content) as JSON.
+  // SQLite has no native JSON column type, so this is stored as text and
+  // parsed back out in code — a normal, honest tradeoff for a field that's
+  // always read/written as a whole, never queried column-by-column.
+  filesJson   String
+  status      String    @default("planned") // "planned" | "applied"
+  createdAt   DateTime  @default(now())
+  appliedAt   DateTime?
+
+  @@index([userId])
+}

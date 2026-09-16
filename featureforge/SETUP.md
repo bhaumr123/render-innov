@@ -7,11 +7,12 @@ and keep developing FeatureForge, your Mac is exactly right. These are the
 steps to get the current code running there.
 
 **Shortcut:** once you've cloned the repo (step 2), you can run
-`bash featureforge/scripts/setup-mac.sh` instead of steps 3–4 — it checks
-your Node version, installs both the backend and frontend, and creates
-`.env` from the template for you. Steps 3–7 below are what that script
-automates, spelled out in case you'd rather do it by hand or something
-goes wrong.
+`bash featureforge/scripts/setup-mac.sh` instead of steps 3–5 — it checks
+your Node version, installs both the backend and frontend, creates `.env`
+from the template (generating a real `JWT_SECRET` for you — only the
+Anthropic key needs filling in by hand), and applies the database
+migrations. Steps 3–7 below are what that script automates, spelled out in
+case you'd rather do it by hand or something goes wrong.
 
 ## 1. Prerequisites
 
@@ -50,21 +51,35 @@ cd featureforge/backend && npm install
 cd ../frontend && npm install
 ```
 
-## 4. Add your Anthropic API key
+## 4. Add your Anthropic API key and a JWT secret
 
 ```bash
 cd ../backend
 cp .env.example .env
 ```
-Open `backend/.env` in any editor and replace the placeholder with your
-real key from [console.anthropic.com](https://console.anthropic.com):
+Open `backend/.env` in any editor. Replace the Anthropic placeholder with
+your real key from [console.anthropic.com](https://console.anthropic.com):
 ```
 ANTHROPIC_API_KEY=sk-ant-your-real-key
 ```
+And replace `JWT_SECRET`'s placeholder with any long random string — this
+one you don't get from anywhere, you just generate it:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
 `.env` is gitignored — it will never get committed or pushed. Don't paste
-your key into chat, a commit, or anywhere else in the repo.
+either secret into chat, a commit, or anywhere else in the repo.
 
-## 5. Run it — two terminal tabs
+## 5. Set up the database
+
+```bash
+npx prisma migrate deploy
+```
+This creates `prisma/dev.db` (a local SQLite file, also gitignored) and
+applies the schema — the `User` and `FeatureRequest` tables. You only need
+to re-run this after pulling a change that adds a new migration.
+
+## 6. Run it — two terminal tabs
 
 **Tab 1 — backend:**
 ```bash
@@ -79,28 +94,43 @@ cd featureforge/frontend
 npm run dev
 ```
 You should see Vite print `Local: http://localhost:5173/`. Open that URL
-in your browser — that's the actual app: pick a stream, describe a
-feature, click **Plan this feature**, review the diff, click **Apply to
-disk**.
+in your browser — that's the actual app. First screen is a login/signup
+form (everything's behind auth now); create an account, then pick a
+stream, describe a feature, click **Plan this feature**, review the diff,
+click **Apply to disk**. Your past requests show up in **Your history**
+below the form.
 
 Both auto-reload on file changes, so leave them running while we work.
 
-## 6. Or test the API directly with curl
+## 7. Or test the API directly with curl
 
+Auth is required on every `/api/features/*` route now, so you need a token
+first:
 ```bash
+curl -X POST http://localhost:4000/api/auth/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a-real-password"}'
+```
+That returns `{"token": "...", "user": {...}}` — copy the token and use it
+on everything else:
+```bash
+TOKEN="paste-the-token-here"
+
 curl http://localhost:4000/api/health
 
-curl http://localhost:4000/api/features/streams
+curl http://localhost:4000/api/features/streams -H "Authorization: Bearer $TOKEN"
 
 curl -X POST http://localhost:4000/api/features/fullstack/plan \
-  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"description":"scaffold an Express backend with a health check endpoint"}'
 ```
 The last one is the same thing the "Plan this feature" button does — with
-your key in place, it returns a JSON plan with a `summary` and a `files`
-array, each with a unified `diff`. Nothing gets written to `tripcraft-app/`
-until you also call `/api/features/fullstack/apply` with the `planId` it
-gives you (or click **Apply to disk** in the UI).
+your Anthropic key in place, it returns a JSON plan with a `summary` and a
+`files` array, each with a unified `diff`, and saves it to the database
+with status `"planned"`. Nothing gets written to `tripcraft-app/` until
+you also call `/api/features/fullstack/apply` with the `planId` it gives
+you (or click **Apply to disk** in the UI) — that flips its status to
+`"applied"`.
 
 ## Staying in sync with this session
 

@@ -1,7 +1,8 @@
-import { randomUUID } from "crypto";
 import express from "express";
 import { planFeature } from "../lib/claudeClient.js";
 import { unifiedDiff } from "../lib/diffUtil.js";
+import { requireAuth } from "../lib/auth.js";
+import { prisma } from "../lib/prisma.js";
 import {
   STREAMS,
   isValidStream,
@@ -15,10 +16,10 @@ import {
 
 export const featuresRouter = express.Router();
 
-// In-memory store of plans awaiting a decision. A real app would persist
-// this (that's Module 4 — database) so history survives a server restart;
-// for now, keeping it in memory is honest about what stage we're at.
-const pendingPlans = new Map();
+// Every route below needs a logged-in user — a plan and its diff are now
+// tied to whoever asked for them (userId on FeatureRequest), so there has
+// to be a "whoever" before any of this runs.
+featuresRouter.use(requireAuth);
 
 // GET /api/features/streams — lets a client (or you, via curl) discover
 // what streams exist without hardcoding them on the frontend.
@@ -29,6 +30,28 @@ featuresRouter.get("/streams", (req, res) => {
     description: s.description,
   }));
   res.json({ streams });
+});
+
+// GET /api/features/history — every plan this user has ever made, most
+// recent first. This is the entire reason Module 4 exists: before it, this
+// information lived in a Map that emptied itself on every restart.
+featuresRouter.get("/history", async (req, res) => {
+  const requests = await prisma.featureRequest.findMany({
+    where: { userId: req.user.id },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json({
+    requests: requests.map((r) => ({
+      id: r.id,
+      stream: r.stream,
+      description: r.description,
+      summary: r.summary,
+      status: r.status,
+      fileCount: JSON.parse(r.filesJson).length,
+      createdAt: r.createdAt,
+      appliedAt: r.appliedAt,
+    })),
+  });
 });
 
 function requireValidStream(req, res, next) {
@@ -43,8 +66,8 @@ function requireValidStream(req, res, next) {
 
 // POST /api/features/:stream/plan  { description: string }
 // Asks Claude to design the change for that stream, computes a diff per
-// file against what's currently on disk, and returns the plan WITHOUT
-// touching anything on disk.
+// file against what's currently on disk, saves the plan (status:
+// "planned"), and returns it WITHOUT touching anything in the target dir.
 featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
   const { stream } = req.params;
   const { description } = req.body || {};
@@ -86,19 +109,26 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
         action: f.action,
         explanation: f.explanation,
         diff: unifiedDiff(f.path, before, after),
-        content: after, // kept server-side so /apply doesn't need Claude again
+        content: after, // kept in the DB row so /apply doesn't need Claude again
       };
     });
 
-    const planId = randomUUID();
-    pendingPlans.set(planId, { stream, description, summary, files });
+    const saved = await prisma.featureRequest.create({
+      data: {
+        userId: req.user.id,
+        stream,
+        description,
+        summary,
+        filesJson: JSON.stringify(files),
+        status: "planned",
+      },
+    });
 
     // Don't send raw `content` back to the client for the review step —
     // the diff already shows the change; sending full content too just
-    // bloats the response. It stays server-side, keyed by planId, until
-    // /apply asks for it.
+    // bloats the response. It stays in the DB row until /apply asks for it.
     res.json({
-      planId,
+      planId: saved.id,
       stream,
       summary,
       files: files.map(({ content, ...rest }) => rest),
@@ -110,20 +140,27 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
 
 // POST /api/features/:stream/apply  { planId: string }
 // Writes a previously-planned change to that stream's target directory for
-// real. The planId must have come from a /plan call for this same stream —
-// that's what stops a k8s plan from accidentally landing in tripcraft-app/.
-featuresRouter.post("/:stream/apply", requireValidStream, (req, res) => {
+// real, then marks that FeatureRequest row "applied". Scoped to req.user.id
+// so one user can never apply another's plan by guessing an id.
+featuresRouter.post("/:stream/apply", requireValidStream, async (req, res) => {
   const { stream } = req.params;
   const { planId } = req.body || {};
-  const plan = pendingPlans.get(planId);
-  if (!plan || plan.stream !== stream) {
+
+  const saved = await prisma.featureRequest.findFirst({
+    where: { id: planId, userId: req.user.id, stream },
+  });
+  if (!saved) {
     return res.status(404).json({
-      error: "Unknown or expired planId for this stream. Run /plan again.",
+      error: "Unknown planId for this stream and user. Run /plan again.",
     });
   }
+  if (saved.status === "applied") {
+    return res.status(409).json({ error: "This plan was already applied." });
+  }
 
+  const files = JSON.parse(saved.filesJson);
   const applied = [];
-  for (const file of plan.files) {
+  for (const file of files) {
     if (file.action === "delete") {
       deleteFile(stream, file.path);
     } else {
@@ -132,6 +169,10 @@ featuresRouter.post("/:stream/apply", requireValidStream, (req, res) => {
     applied.push({ path: file.path, action: file.action });
   }
 
-  pendingPlans.delete(planId);
-  res.json({ stream, summary: plan.summary, applied });
+  await prisma.featureRequest.update({
+    where: { id: saved.id },
+    data: { status: "applied", appliedAt: new Date() },
+  });
+
+  res.json({ stream, summary: saved.summary, applied });
 });

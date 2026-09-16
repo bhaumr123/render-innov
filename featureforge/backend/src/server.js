@@ -1,5 +1,6 @@
 // Module 1: your first API endpoint. Module 2-3: FeatureForge's core loop —
-// plan a change with Claude, show a diff, apply it on request.
+// plan a change with Claude, show a diff, apply it on request. Module 4:
+// persist that loop's history to a real database. Module 5: require login.
 //
 // A web server's job is simple: listen for HTTP requests, and send back
 // HTTP responses. Express is a library that makes that easy — you register
@@ -7,6 +8,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import { authRouter } from "./routes/auth.js";
 import { featuresRouter } from "./routes/features.js";
 
 const app = express();
@@ -30,6 +32,7 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
+app.use("/api/auth", authRouter);
 app.use("/api/features", featuresRouter);
 
 app.listen(PORT, () => {

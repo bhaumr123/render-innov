@@ -34,13 +34,23 @@ echo "== Installing frontend dependencies =="
 echo
 if [ ! -f "$BACKEND_DIR/.env" ]; then
   cp "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
-  echo "== Created backend/.env from the template =="
+  # JWT_SECRET just needs to be long and random, not chosen by you — generate
+  # a real one now so the only thing left to fill in by hand is the API key.
+  GENERATED_SECRET="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+  # Portable in-place sed (macOS's `sed -i` needs an explicit, even if empty, backup suffix).
+  sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=${GENERATED_SECRET}/" "$BACKEND_DIR/.env"
+  rm -f "$BACKEND_DIR/.env.bak"
+  echo "== Created backend/.env from the template (JWT_SECRET generated for you) =="
   echo "Open $BACKEND_DIR/.env and paste your real Anthropic API key in"
   echo "(get one free at https://console.anthropic.com), then re-run this"
   echo "script or start the servers yourself — see below."
 else
   echo "backend/.env already exists — leaving it as is."
 fi
+
+echo
+echo "== Applying database migrations =="
+(cd "$BACKEND_DIR" && npx prisma migrate deploy)
 
 echo
 echo "== Setup complete =="
