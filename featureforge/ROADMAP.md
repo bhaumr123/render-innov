@@ -136,10 +136,20 @@ We go in order; nothing here is optional filler.
     frontend component test.
 11. **Deployment** — env vars, deploying backend + frontend to Render,
     production DB, CORS.
-12. **Stretch goals** (pick any, later): stream Claude's response
-    token-by-token, let FeatureForge run tests on the target app before
-    offering to apply a change, undo/rollback a past feature, support
-    multiple target projects.
+12. **Stretch goals** (pick any) — ✅ two done:
+    - ✅ **Stream Claude's response token-by-token.** New SSE endpoint
+      (`POST /:stream/plan/stream`) built on the exact same plan logic as
+      `/plan`; the frontend shows Claude "writing" the plan live.
+    - ✅ **Support multiple target projects.** A `Stream` DB table plus
+      `POST /api/features/streams` lets you register a brand-new target
+      directory at runtime — its own system prompt, its own sandboxed
+      folder under `featureforge/custom/`, usable immediately. Verified
+      live, in a real browser: registered one, planned and applied a real
+      feature into it.
+    - ⬜ Let FeatureForge run tests on the target app before offering to
+      apply a change.
+    - ⬜ Undo/rollback a past feature.
+    - ⬜ Swap SQLite → Postgres.
 
 Once FeatureForge can plan + diff + apply, every module after that (4-11)
 gets *exercised on itself* AND used to keep growing `tripcraft-app/` — e.g.
