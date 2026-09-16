@@ -195,9 +195,27 @@ like "add a trip request form" through FeatureForge.
        k8s-deploy/), which would have double-nested every file — fixed
        the prompt and added `looksLikeDuplicatedRoot()` as a backstop
        that rejects a plan outright rather than silently mis-writing it.
-- [ ] Module 4 — database (persist history)
-- [ ] Module 5 — auth
-- [ ] Module 8 — frontend auth
+- [x] Module 4 — database. Prisma + SQLite, two models (`User`,
+      `FeatureRequest`, one-to-many). Every `/plan` now creates a DB row
+      (status `"planned"`) instead of an in-memory Map entry; `/apply`
+      flips it to `"applied"` and stamps `appliedAt`. New
+      `GET /api/features/history` lists a user's past requests. Verified:
+      history persists a plan correctly, a second `/apply` on the same
+      plan correctly 409s instead of double-writing.
+- [x] Module 5 — auth. bcryptjs password hashing, JWT (7-day expiry),
+      `requireAuth` middleware in front of every `/api/features/*` route.
+      `POST /api/auth/signup` and `/login`; same error for "no such user"
+      and "wrong password" so a client can't enumerate accounts. Verified:
+      signup → login → authenticated request all work, duplicate signup
+      409s, wrong password 401s, missing/invalid token 401s.
+  - Also patched the frontend to match (a lightweight stand-in for the
+    full Module 8 polish still ahead): a login/signup gate
+    (`Auth.jsx`), a token stored in `localStorage` and attached to every
+    request (`api.js`), and a simple history panel in the main view.
+    Compiles clean, no errors.
+- [ ] Module 8 — frontend auth, properly: protected routing, a real
+      "session expired, please log in again" flow (right now an expired
+      token just surfaces as an error banner), logout confirmation, etc.
 - [ ] Module 9 — polish
 - [ ] Module 10 — testing
 - [ ] Module 11 — deployment
