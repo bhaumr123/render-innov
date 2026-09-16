@@ -246,4 +246,23 @@ like "add a trip request form" through FeatureForge.
     `npm audit fix --force`, which would pull in breaking major versions
     for no real safety gain here — worth re-checking before Module 11
     actually ships anywhere public.
-- [ ] Module 11 — deployment
+- [x] Module 11 — deployment prep. `featureforge/render.yaml`: a Render
+      Blueprint with two services (Node backend, static frontend) —
+      separate from the repo's root `render.yaml`, which is the actual
+      live render-innov app and was deliberately left untouched. Made
+      the two things a real deployment needs configurable instead of
+      hardcoded: `CORS_ORIGIN` (backend) and `VITE_API_BASE` (frontend,
+      baked in at build time via Vite's `import.meta.env`) — both default
+      to today's wide-open/localhost behavior when unset, so local dev
+      needed zero changes (re-ran the full test suite and a frontend
+      build to confirm). `DEPLOYMENT.md` walks through applying the
+      blueprint, matching the style of the repo's existing
+      `RENDER_DEPLOYMENT.md`.
+      **Honest limitation, documented rather than solved**: `FeatureRequest`/
+      `User` data lives in SQLite on the backend's own disk, which is
+      ephemeral on Render's free tier — a redeploy or restart wipes it.
+      Real fix is Module 12's still-open "swap SQLite → Postgres" stretch
+      goal, or a paid persistent disk; not implemented here.
+      **What I didn't do**: actually click Deploy. That needs your own
+      Render account — everything above is prepared and locally verified,
+      not live anywhere.
