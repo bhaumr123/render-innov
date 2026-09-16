@@ -378,12 +378,30 @@ like "add a trip request form" through FeatureForge.
     same way it blocks `dl.google.com` for the Android SDK — the resulting
     `fetch failed` is caught cleanly by `runSelfImprovement`'s own
     try/catch and recorded as `status: "error"` rather than crashing
-    anything. **Honest limitation**: the actual LLM call (does the model
-    produce a *good* proposal) can't be verified here — that needs Ollama
-    running locally (`ollama serve` + `ollama pull llama3.1`, or set
-    `OLLAMA_MODEL`/`OLLAMA_BASE_URL` for a different one). Everything up
-    to that call — the schema, the seed data, the auto-logging hooks, the
-    graph's control flow, the scheduler, the routes, and the frontend — is
-    real, running code, verified against a real database and a real
-    browser.
+    anything. Everything up to that call — the schema, the seed data, the
+    auto-logging hooks, the graph's control flow, the scheduler, the
+    routes, and the frontend — is real, running code, verified against a
+    real database and a real browser.
+  - **Went further**: `test/selfImprove.test.js` (5 tests, `@langchain/ollama`
+    mocked) is a real, CI-safe regression suite for the graph's control
+    flow — no open issues skips the model entirely, a proposal marks
+    issues reviewed, a model failure is recorded as an error without
+    touching issue status, "nothing actionable" still marks issues
+    reviewed, and a run caps out at `MAX_ISSUES_PER_RUN`. Separately, this
+    sandbox's network policy blocking `ollama.com` (the same policy that
+    blocks the Android SDK) turned out not to block `proxy.golang.org` or
+    Ubuntu's own apt repos — so Ollama's server was **built from source**
+    (`go install github.com/ollama/ollama@v0.23.0`, three vendored C++
+    headers pulled from apt to satisfy its embedded llama.cpp engine) and
+    actually run here. Pointing `selfImprove.js` at that real server
+    turned the earlier generic `fetch failed` into a precise `model
+    'llama3.1' not found` — proof the HTTP integration itself is correct,
+    not just the code around it. **Still an honest limitation**: every
+    model registry (`registry.ollama.ai`, Hugging Face) is blocked too, so
+    actual model weights — and therefore a real generated proposal —
+    couldn't be produced in this sandbox. `OLLAMA_SETUP.md` has the normal
+    install path (which just works with real internet access) plus a new
+    `npm run test:analyzer` script (`backend/scripts/test-analyzer.js`)
+    for manually exercising the analyzer against a real local model once
+    you have one pulled.
   - Still open: run tests before applying, undo/rollback, SQLite → Postgres.
