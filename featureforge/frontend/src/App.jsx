@@ -5,6 +5,7 @@ import DiffView from "./DiffView.jsx";
 import NewStreamForm from "./NewStreamForm.jsx";
 import FeatureRequestForm from "./FeatureRequestForm.jsx";
 import Dashboard from "./Dashboard.jsx";
+import SelfImprove from "./SelfImprove.jsx";
 
 const TYPE_LABELS = {
   fullstack: "Full-Stack",
@@ -14,9 +15,10 @@ const TYPE_LABELS = {
 };
 
 function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
-  // "dashboard" | "build" — there's no router yet (see ROADMAP.md), so
-  // this is plain component state rather than a real URL. Good enough for
-  // a single-page studio; a real route per build type is future polish.
+  // "dashboard" | "build" | "self-improve" — there's no router yet (see
+  // ROADMAP.md), so this is plain component state rather than a real URL.
+  // Good enough for a single-page studio; a real route per view is future
+  // polish.
   const [view, setView] = useState("dashboard");
   const [buildType, setBuildType] = useState("fullstack");
   const [streams, setStreams] = useState([]);
@@ -142,19 +144,28 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
       <header>
         <div className="header-row">
           <div>
-            {view === "build" && (
+            {view !== "dashboard" && (
               <button type="button" className="link-btn back-link" onClick={() => setView("dashboard")}>
                 ← Studio
               </button>
             )}
-            <h1>{view === "dashboard" ? "FeatureForge Studio" : TYPE_LABELS[buildType]}</h1>
+            <h1>
+              {view === "dashboard" && "FeatureForge Studio"}
+              {view === "build" && TYPE_LABELS[buildType]}
+              {view === "self-improve" && "Self-Improvement"}
+            </h1>
             <p>
-              {view === "dashboard"
-                ? "Pick what you're building. Describe it. Review the diff. Ship it."
-                : "Describe a feature. Review the diff. Apply it for real."}
+              {view === "dashboard" && "Pick what you're building. Describe it. Review the diff. Ship it."}
+              {view === "build" && "Describe a feature. Review the diff. Apply it for real."}
+              {view === "self-improve" && "What FeatureForge has learned from its own real bugs."}
             </p>
           </div>
           <div className="account">
+            {view !== "self-improve" && (
+              <button type="button" className="link-btn" onClick={() => setView("self-improve")}>
+                Self-improvement
+              </button>
+            )}
             <span>{user.email}</span>
             <button type="button" className="link-btn" onClick={onLogOut}>
               Log out
@@ -163,9 +174,11 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
         </div>
       </header>
 
-      {view === "dashboard" ? (
-        <Dashboard streams={streams} history={history} onStartBuild={startBuild} />
-      ) : (
+      {view === "dashboard" && <Dashboard streams={streams} history={history} onStartBuild={startBuild} />}
+
+      {view === "self-improve" && <SelfImprove onError={handleApiError} />}
+
+      {view === "build" && (
         <>
           <FeatureRequestForm
             key={buildType}

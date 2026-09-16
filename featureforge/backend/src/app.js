@@ -7,6 +7,7 @@ import cors from "cors";
 import express from "express";
 import { authRouter } from "./routes/auth.js";
 import { featuresRouter } from "./routes/features.js";
+import { selfImproveRouter } from "./routes/selfImprove.js";
 import { loadCustomStreams } from "./lib/targetProject.js";
 
 export const app = express();
@@ -39,3 +40,4 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/auth", authRouter);
 app.use("/api/features", featuresRouter);
+app.use("/api/self-improve", selfImproveRouter);

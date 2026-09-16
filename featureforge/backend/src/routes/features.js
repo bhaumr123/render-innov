@@ -19,6 +19,33 @@ import {
 
 export const featuresRouter = express.Router();
 
+// Feeds the self-improvement agent's memory (KnownIssue). Only genuinely
+// unexpected failures count — not our own deliberately-thrown domain
+// errors (they already have an err.status and proper handling elsewhere),
+// and not "you haven't configured X yet" messages, which are operator
+// setup, not a bug in the code. Never lets a logging failure break the
+// actual response path.
+function isConfigError(err) {
+  return /is not set/i.test(err.message);
+}
+
+async function maybeLogFailure(area, err) {
+  if (err.status || isConfigError(err)) return;
+  try {
+    await prisma.knownIssue.create({
+      data: {
+        title: `Unexpected error in ${area}: ${err.message.slice(0, 120)}`,
+        description: err.stack || err.message,
+        area,
+        status: "open",
+      },
+    });
+  } catch {
+    // Logging the failure is a nice-to-have, not worth failing on top of
+    // the original failure.
+  }
+}
+
 // Every route below needs a logged-in user — a plan and its diff are now
 // tied to whoever asked for them (userId on FeatureRequest), so there has
 // to be a "whoever" before any of this runs.
@@ -50,6 +77,7 @@ featuresRouter.post("/streams", async (req, res) => {
     if (err instanceof InvalidStreamError) {
       return res.status(400).json({ error: err.message });
     }
+    await maybeLogFailure("streams", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -172,6 +200,7 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
     const result = await runPlan(stream, description, req.user.id);
     res.json(result);
   } catch (err) {
+    await maybeLogFailure("features-api-plan", err);
     res.status(err.status || 500).json({ error: err.message });
   }
 });
@@ -200,6 +229,7 @@ featuresRouter.post("/:stream/plan/stream", requireValidStream, async (req, res)
     });
     res.write(`event: done\ndata: ${JSON.stringify(result)}\n\n`);
   } catch (err) {
+    await maybeLogFailure("features-api-plan-stream", err);
     res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
   } finally {
     res.end();
@@ -214,33 +244,42 @@ featuresRouter.post("/:stream/apply", requireValidStream, async (req, res) => {
   const { stream } = req.params;
   const { planId } = req.body || {};
 
-  const saved = await prisma.featureRequest.findFirst({
-    where: { id: planId, userId: req.user.id, stream },
-  });
-  if (!saved) {
-    return res.status(404).json({
-      error: "Unknown planId for this stream and user. Run /plan again.",
+  try {
+    const saved = await prisma.featureRequest.findFirst({
+      where: { id: planId, userId: req.user.id, stream },
     });
-  }
-  if (saved.status === "applied") {
-    return res.status(409).json({ error: "This plan was already applied." });
-  }
-
-  const files = JSON.parse(saved.filesJson);
-  const applied = [];
-  for (const file of files) {
-    if (file.action === "delete") {
-      deleteFile(stream, file.path);
-    } else {
-      writeFile(stream, file.path, file.content);
+    if (!saved) {
+      return res.status(404).json({
+        error: "Unknown planId for this stream and user. Run /plan again.",
+      });
     }
-    applied.push({ path: file.path, action: file.action });
+    if (saved.status === "applied") {
+      return res.status(409).json({ error: "This plan was already applied." });
+    }
+
+    const files = JSON.parse(saved.filesJson);
+    const applied = [];
+    for (const file of files) {
+      if (file.action === "delete") {
+        deleteFile(stream, file.path);
+      } else {
+        writeFile(stream, file.path, file.content);
+      }
+      applied.push({ path: file.path, action: file.action });
+    }
+
+    await prisma.featureRequest.update({
+      where: { id: saved.id },
+      data: { status: "applied", appliedAt: new Date() },
+    });
+
+    res.json({ stream, summary: saved.summary, applied });
+  } catch (err) {
+    // Found while adding this route's first try/catch: it had none before
+    // — a thrown error here (a bad filesJson row, a disk write failure)
+    // would have fallen through to Express's bare default error handler
+    // instead of a clean JSON response. Logged as its own KnownIssue.
+    await maybeLogFailure("features-api-apply", err);
+    res.status(err.status || 500).json({ error: err.message });
   }
-
-  await prisma.featureRequest.update({
-    where: { id: saved.id },
-    data: { status: "applied", appliedAt: new Date() },
-  });
-
-  res.json({ stream, summary: saved.summary, applied });
 });

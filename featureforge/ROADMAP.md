@@ -333,4 +333,57 @@ like "add a trip request form" through FeatureForge.
     yet. Verified live: clicking a card opens the build screen
     pre-selected to that type; the type's own history shows instead of
     everything mixed together.
+  - **Self-improvement agent**: FeatureForge now learns from its own real
+    bugs instead of just the two apps it builds. `KnownIssue` (a real bug,
+    tagged by area) and `ImprovementRun` (a record of one review pass)
+    are new Prisma models; `prisma/seed-known-issues.js` seeded 6 genuine
+    bugs hit earlier in this project (the forced-tool-use `summary` gap,
+    the k8s wrong-entry-point guess, the duplicated-root path bug, the
+    Chromium `pattern`-regex break, `changelog.js`'s comma bug, and
+    `POST /:stream/apply` having no try/catch at all — found *while
+    building this feature*, since every route needed a
+    `maybeLogFailure()` hook and this one had nowhere to add it). Every
+    route in `features.js` now auto-logs a new `KnownIssue` on a genuinely
+    unexpected error (not our own thrown domain errors, not "you haven't
+    configured X" messages) — the memory keeps growing on its own.
+    `lib/selfImprove.js` is a small **LangGraph** `StateGraph`: gather open
+    issues → a real conditional branch (skip the model entirely if there's
+    nothing to review) → ask a local **Ollama** model
+    (`@langchain/ollama`'s `ChatOllama` + `withStructuredOutput`, the same
+    "trust the shape, not the fields" lesson as forced tool-use) to find a
+    pattern and propose one concrete next step → record an
+    `ImprovementRun`. Deliberately stops at a *written* proposal, not an
+    auto-applied diff — no FeatureForge stream targets FeatureForge's own
+    source, and wiring one in safely is a real open question, not
+    something to hand-wave past.
+    `lib/scheduler.js` makes "periodically improve" actually periodic: a
+    `setInterval` gated behind `SELF_IMPROVE_ENABLED=true`
+    (`SELF_IMPROVE_INTERVAL_MS` configurable, default 1 hour), started
+    only from `server.js` — never `app.js`, which the test suite imports
+    directly, so a background timer there would leak into every test run.
+    New routes (all behind `requireAuth`, like everything else in this
+    API): `POST /api/self-improve/run` (manual trigger), `GET
+    /api/self-improve/issues`, `GET /api/self-improve/runs`. A minimal
+    `SelfImprove.jsx` view (new header nav button, reusing the existing
+    history-list/badge styles rather than inventing new ones) shows open
+    issues and past runs with a "Run now" button.
+    **Verified live, twice** — once via a standalone script hitting the
+    real seeded `dev.db` directly, once through `curl` against a running
+    server, and once more end-to-end in an actual browser via Playwright
+    (screenshot confirmed 6 real issues listed, "Run now" clicked, the run
+    recorded and rendered with its status badge): `gatherIssues()`
+    correctly pulls the real `KnownIssue` rows, the conditional edge
+    correctly routes to the Ollama call when issues exist, and — since
+    this environment's network policy blocks reaching an Ollama server the
+    same way it blocks `dl.google.com` for the Android SDK — the resulting
+    `fetch failed` is caught cleanly by `runSelfImprovement`'s own
+    try/catch and recorded as `status: "error"` rather than crashing
+    anything. **Honest limitation**: the actual LLM call (does the model
+    produce a *good* proposal) can't be verified here — that needs Ollama
+    running locally (`ollama serve` + `ollama pull llama3.1`, or set
+    `OLLAMA_MODEL`/`OLLAMA_BASE_URL` for a different one). Everything up
+    to that call — the schema, the seed data, the auto-logging hooks, the
+    graph's control flow, the scheduler, the routes, and the frontend — is
+    real, running code, verified against a real database and a real
+    browser.
   - Still open: run tests before applying, undo/rollback, SQLite → Postgres.

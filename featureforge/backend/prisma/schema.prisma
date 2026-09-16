@@ -62,3 +62,32 @@ model Stream {
   userId       String
   createdAt    DateTime @default(now())
 }
+
+// The self-improvement loop's memory: a real bug this project actually hit,
+// not a hypothetical. Seeded with the ones found earlier this session;
+// routes/features.js also logs a new row automatically whenever an
+// unexpected server error happens, so this keeps growing on its own.
+model KnownIssue {
+  id            String   @id @default(uuid())
+  title         String
+  description   String
+  area          String // e.g. "features-api", "streams", "frontend"
+  status        String   @default("open") // "open" | "reviewed"
+  discoveredAt  DateTime @default(now())
+  reviewedInRun String? // ImprovementRun.id, once reviewed
+}
+
+// One periodic (or manually triggered) run of the self-improvement graph:
+// which issues it looked at, what it proposed, and whether it succeeded.
+// This is the audit trail — "periodically improve" means nothing if you
+// can't see what actually happened on each pass.
+model ImprovementRun {
+  id              String    @id @default(uuid())
+  ranAt           DateTime  @default(now())
+  trigger         String // "scheduled" | "manual"
+  issueIds        String // JSON array of KnownIssue ids reviewed this run
+  status          String // "proposed" | "no_action" | "error"
+  proposalSummary String? // what the agent decided to do, in its own words
+  featureRequestId String? // set if a real plan was created from the proposal
+  errorMessage    String?
+}

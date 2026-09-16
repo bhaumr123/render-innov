@@ -6,10 +6,14 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed:known-issues": "node prisma/seed-known-issues.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
+    "@langchain/core": "^1.2.11",
+    "@langchain/langgraph": "^1.4.15",
+    "@langchain/ollama": "^1.3.0",
     "@prisma/client": "^5.20.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
