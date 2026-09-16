@@ -18,8 +18,13 @@ a named target directory plus a system prompt tuned for what belongs there:
   code: backend API, frontend, database.
 - **`k8s`** → writes to `featureforge/k8s-deploy/`. Deployment artifacts:
   Dockerfiles, Kubernetes manifests (Deployment, Service, ConfigMap, ...).
+- **`mobile`** → writes to `featureforge/tripcraft-app/mobile/`. A native
+  Android (Kotlin, Gradle) client.
+- Plus any **custom stream** you register at runtime via
+  `POST /api/features/streams` — its own directory under
+  `featureforge/custom/`, no code change or restart needed.
 
-Both target directories start **empty**. So instead of me hand-writing the
+All target directories start **empty**. So instead of me hand-writing the
 rest of TripCraft (the trip-itinerary app from our original plan) *and*
 separately hand-writing its Kubernetes manifests, we use FeatureForge
 *itself* to build both — you'll watch real diffs land in each directory as
@@ -276,3 +281,29 @@ like "add a trip request form" through FeatureForge.
       **What I didn't do**: actually click Deploy. That needs your own
       Render account — everything above is prepared and locally verified,
       not live anywhere.
+- [x] Module 12 (partial — stretch goals, pick any) —
+  - **Streaming**: `planFeatureStream()` uses the Anthropic SDK's
+    `messages.stream()`, relaying `input_json_delta` events over a new
+    `POST /:stream/plan/stream` SSE endpoint built on the exact same
+    `runPlan()` logic as `/plan`. Frontend shows a live "Claude is
+    writing…" preview. Verified with real curl and browser runs.
+  - **Custom streams**: a `Stream` DB table + `POST /api/features/streams`
+    lets you register a new target project at runtime — own directory
+    under `featureforge/custom/`, own system prompt, usable immediately,
+    no restart. Verified live through the actual browser UI: registered
+    one, planned and applied a real feature into it.
+  - **Mobile (Android) stream**: added as a third built-in stream (like
+    `fullstack`/`k8s`, not a runtime registration) → writes to
+    `tripcraft-app/mobile/`. Native Kotlin + Gradle Kotlin DSL, referencing
+    the `fullstack` stream for the real backend's port/response shape —
+    same lesson as k8s: match reality, don't guess. Verified live: a real
+    request generated a complete, well-formed Android project (all 7 XML
+    files parse; `gradle help` correctly parses both Kotlin DSL build
+    files and gets as far as resolving the Android Gradle Plugin before
+    failing). **Honest limitation**: this environment can't reach
+    `dl.google.com` (blocked by network policy) or Google's Maven repo, so
+    an actual compiled/signed APK can't be produced here — FeatureForge
+    generates real, valid source; building it needs Android Studio (or
+    the Android SDK + Gradle) on your own machine, where Gradle sync also
+    generates the wrapper's binary jar that a text-only tool can't write.
+  - Still open: run tests before applying, undo/rollback, SQLite → Postgres.

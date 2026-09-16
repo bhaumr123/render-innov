@@ -182,7 +182,7 @@
       </p>
     </div>
     <dl class="titleblock__fields">
-      <div class="field"><dt>Streams</dt><dd>fullstack · k8s · + custom (runtime)</dd></div>
+      <div class="field"><dt>Streams</dt><dd>fullstack · k8s · mobile · + custom (runtime)</dd></div>
       <div class="field"><dt>Third-party API</dt><dd>Anthropic Claude</dd></div>
       <div class="field"><dt>Status</dt><dd>Modules 0–11 done · 12: 2/5 stretch</dd></div>
       <div class="field"><dt>Repo path</dt><dd class="mono">featureforge/</dd></div>
@@ -622,6 +622,7 @@
         </thead>
         <tbody>
           <tr><td>Frontend</td><td>React (Vite), plain CSS — no router yet, single view</td></tr>
+          <tr><td>Mobile</td><td>Native Android — Kotlin + Gradle Kotlin DSL (source only; compiling an APK needs Android Studio/SDK locally — this environment can't reach dl.google.com)</td></tr>
           <tr><td>Backend</td><td>Node.js + Express (<code>app.js</code> separate from <code>server.js</code> for testability)</td></tr>
           <tr><td>Database</td><td>SQLite via Prisma — <code>User</code>, <code>FeatureRequest</code>, <code>Stream</code></td></tr>
           <tr><td>Auth</td><td>bcryptjs + JWT (7-day expiry)</td></tr>
