@@ -15,9 +15,8 @@ import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
 import { ChatOllama } from "@langchain/ollama";
 import { z } from "zod";
 import { prisma } from "./prisma.js";
+import { OLLAMA_BASE_URL, OLLAMA_MODEL } from "./ollamaConfig.js";
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1";
 const MAX_ISSUES_PER_RUN = 8;
 
 const ProposalSchema = z.object({

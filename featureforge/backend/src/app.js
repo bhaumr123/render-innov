@@ -9,6 +9,7 @@ import { authRouter } from "./routes/auth.js";
 import { featuresRouter } from "./routes/features.js";
 import { selfImproveRouter } from "./routes/selfImprove.js";
 import { loadCustomStreams } from "./lib/targetProject.js";
+import { currentProvider } from "./lib/llmClient.js";
 
 export const app = express();
 
@@ -33,9 +34,12 @@ app.use(express.json());
 
 // GET /api/health — a "health check" endpoint. Nearly every real API has
 // one: it's how you (or a hosting platform, or a monitoring tool) confirm
-// the server is up without doing anything meaningful.
+// the server is up without doing anything meaningful. `llmProvider` doubles
+// as the one place a client (or you, via curl) can confirm whether plan
+// generation is running against Claude or a local offline Ollama model —
+// see llmClient.js and OLLAMA_SETUP.md.
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
+  res.json({ status: "ok", time: new Date().toISOString(), llmProvider: currentProvider() });
 });
 
 app.use("/api/auth", authRouter);

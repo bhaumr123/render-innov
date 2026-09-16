@@ -1,5 +1,5 @@
 import express from "express";
-import { planFeature, planFeatureStream } from "../lib/claudeClient.js";
+import { planFeature, planFeatureStream } from "../lib/llmClient.js";
 import { unifiedDiff } from "../lib/diffUtil.js";
 import { requireAuth } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";

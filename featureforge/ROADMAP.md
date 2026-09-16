@@ -478,4 +478,48 @@ like "add a trip request form" through FeatureForge.
        `Array.isArray(plan.files)` check that throws a clear 502 instead
        of assuming "truthy therefore usable." Both seeded as `KnownIssue`
        rows 7 and 8.
+  - **Offline mode**: FeatureForge's whole plan → diff → apply pipeline —
+    every stream, not just the self-improvement side-feature — can now
+    run against a local Ollama model instead of the Claude API. The
+    system/user prompt logic (previously inline in `claudeClient.js`) was
+    pulled out into `promptBuilder.js` so both providers build the exact
+    same request from the exact same rules; `claudeClient.js` (forced
+    tool-use) and the new `ollamaClient.js`
+    (`ChatOllama.withStructuredOutput()` against a Zod schema mirroring
+    the same fields) each just turn that request into a `{summary,
+    files}` plan their own way. `llmClient.js` is a thin dispatcher —
+    `LLM_PROVIDER=ollama` in `.env` routes `routes/features.js` through
+    Ollama; unset or anything else stays on Claude, the default. A new
+    `ollamaConfig.js` centralizes `OLLAMA_BASE_URL`/`OLLAMA_MODEL` so
+    `selfImprove.js` and `ollamaClient.js` can't drift apart on defaults.
+    `GET /api/health` reports which provider is active, and the frontend
+    shows it as a small badge in the header ("⚡ Claude" or "💻 Offline
+    (Ollama)") — never a silent surprise which one is actually answering.
+    Streaming isn't token-by-token for Ollama the way it is for Claude
+    (`withStructuredOutput` doesn't expose that the way Claude's raw
+    `input_json_delta` events do) — `onDelta` gets one honest "Generating
+    locally..." message instead of faking a stream that isn't real.
+    **Verified live**: `test/llmClient.test.js` (4 tests, both providers
+    mocked) checks the dispatcher picks the right one for every
+    `LLM_PROVIDER` value — runs in CI, no Ollama needed. Beyond that,
+    three separate backend instances were started with `LLM_PROVIDER=ollama`
+    and `ANTHROPIC_API_KEY` **deliberately unset**, to prove offline mode
+    really doesn't need Claude at all: one against the real Ollama server
+    built earlier for the self-improvement work (clean 502 `model
+    'llama3.1' not found — run ollama pull llama3.1 first`, through both
+    `/plan` and the SSE `/plan/stream`), and one against a deliberately
+    unreachable port (clean 502 `couldn't reach a local Ollama server —
+    start one with ollama serve`). Both prove the request reaches real
+    code — routes → `llmClient` → `ollamaClient` → a real HTTP call — and
+    comes back as a correctly-classified, actionable error, not a crash.
+    A new `npm run test:offline-plan` script (`backend/scripts/test-
+    offline-plan.js`) builds a real feature request the same way
+    `runPlan()` does and sends it straight through `ollamaClient.js`, for
+    manually testing against a real local model once one's pulled — same
+    **honest limitation** as everywhere else Ollama shows up in this repo:
+    actual model weights aren't reachable in this sandbox (network policy
+    blocks every registry), so a model genuinely reasoning over a real
+    feature request and returning working code couldn't be exercised
+    end-to-end here. On a normal machine with real internet access,
+    `ollama pull` just works and that script will produce a real plan.
   - Still open: run tests before applying, undo/rollback, SQLite → Postgres.

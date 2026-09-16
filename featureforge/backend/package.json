@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "test": "vitest run",
     "seed:known-issues": "node prisma/seed-known-issues.js",
-    "test:analyzer": "node scripts/test-analyzer.js"
+    "test:analyzer": "node scripts/test-analyzer.js",
+    "test:offline-plan": "node scripts/test-offline-plan.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

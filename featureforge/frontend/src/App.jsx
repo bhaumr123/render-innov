@@ -33,6 +33,11 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   const [showNewStream, setShowNewStream] = useState(false);
   const [presetCustomStream, setPresetCustomStream] = useState(null);
   const [error, setError] = useState(null);
+  // Which LLM is actually answering plan requests — Claude, or a local
+  // Ollama model when the backend's LLM_PROVIDER=ollama (see
+  // OLLAMA_SETUP.md). GET /api/health reports it; shown as a badge so
+  // it's never a surprise which one you're talking to.
+  const [llmProvider, setLlmProvider] = useState(null);
 
   // A 401 here means the token expired or was revoked mid-session (it was
   // valid enough to get past the initial /api/auth/me check, then stopped
@@ -69,6 +74,11 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   useEffect(() => {
     loadStreams();
     loadHistory();
+    // Public endpoint, no auth needed — if it fails, the badge just stays
+    // hidden rather than showing an error for something this cosmetic.
+    apiFetch("/api/health")
+      .then((data) => setLlmProvider(data.llmProvider))
+      .catch(() => {});
   }, []);
 
   function startBuild(type) {
@@ -162,6 +172,18 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
             </p>
           </div>
           <div className="account">
+            {llmProvider && (
+              <span
+                className={`provider-badge provider-badge--${llmProvider}`}
+                title={
+                  llmProvider === "ollama"
+                    ? "Plan generation is running fully offline, against a local Ollama model."
+                    : "Plan generation is calling the Claude API."
+                }
+              >
+                {llmProvider === "ollama" ? "💻 Offline (Ollama)" : "⚡ Claude"}
+              </span>
+            )}
             {view !== "self-improve" && (
               <button type="button" className="link-btn" onClick={() => setView("self-improve")}>
                 Self-improvement

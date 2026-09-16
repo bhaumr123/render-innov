@@ -65,6 +65,15 @@ header p { margin: 0 0 28px; color: var(--muted); }
   font-weight: 600;
   font-size: 13px;
 }
+.provider-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.provider-badge--claude { background: #eef4f8; color: var(--accent); }
+.provider-badge--ollama { background: var(--add-bg); color: var(--add); }
 
 .auth-tabs, .type-tabs { display: flex; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
 .tab {
