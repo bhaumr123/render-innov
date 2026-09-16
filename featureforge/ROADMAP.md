@@ -6,10 +6,20 @@ not a toy.
 
 ## What we're building
 
-**FeatureForge**: a small full-stack tool. You describe a feature in plain
-English → it reads the target app's current code → calls the Claude API to
-design the change → shows you a **file-by-file diff** of exactly what would
-change → and, once you approve, **writes those changes to disk for real**.
+**FeatureForge**: a small full-stack tool. You describe a feature — via a
+guided form tailored to what you're building — → it reads the target app's
+current code → calls the Claude API to design the change → shows you a
+**file-by-file diff** of exactly what would change → and, once you approve,
+**writes those changes to disk for real**.
+
+The frontend's request form (`FeatureRequestForm.jsx`) switches its fields
+by type: Full-Stack, Mobile, and Kubernetes each ask for what that domain
+actually needs (a Kubernetes replica count, a mobile screen name) instead
+of one free-text paragraph you might forget details in. A custom stream
+keeps the original free-text box, since FeatureForge can't know a
+runtime-registered stream's domain-specific fields in advance. Whichever
+form you use, the answers get composed into the same kind of description
+the backend always expected — the API itself didn't need to change.
 
 FeatureForge isn't tied to one kind of output. It has **streams** — each one
 a named target directory plus a system prompt tuned for what belongs there:
@@ -306,4 +316,13 @@ like "add a trip request form" through FeatureForge.
     generates real, valid source; building it needs Android Studio (or
     the Android SDK + Gradle) on your own machine, where Gradle sync also
     generates the wrapper's binary jar that a text-only tool can't write.
+  - **Type-specific request forms**: `FeatureRequestForm.jsx` replaced the
+    single stream-dropdown + free-text box with a Full-Stack / Mobile /
+    Kubernetes / Custom-stream switcher — each built-in type has guided
+    fields (e.g. Kubernetes' resource type + replica count, mobile's
+    screen name + "calls the backend API?") composed into the same kind
+    of description the backend already expected, so no API change was
+    needed. Verified live: submitted a real Kubernetes ConfigMap request
+    through the guided form, watched it stream, applied it, confirmed
+    the exact YAML on disk.
   - Still open: run tests before applying, undo/rollback, SQLite → Postgres.
