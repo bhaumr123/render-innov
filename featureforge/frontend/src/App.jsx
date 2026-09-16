@@ -4,8 +4,21 @@ import Auth from "./Auth.jsx";
 import DiffView from "./DiffView.jsx";
 import NewStreamForm from "./NewStreamForm.jsx";
 import FeatureRequestForm from "./FeatureRequestForm.jsx";
+import Dashboard from "./Dashboard.jsx";
+
+const TYPE_LABELS = {
+  fullstack: "Full-Stack",
+  mobile: "Mobile (Android)",
+  k8s: "Kubernetes",
+  custom: "Custom stream",
+};
 
 function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
+  // "dashboard" | "build" — there's no router yet (see ROADMAP.md), so
+  // this is plain component state rather than a real URL. Good enough for
+  // a single-page studio; a real route per build type is future polish.
+  const [view, setView] = useState("dashboard");
+  const [buildType, setBuildType] = useState("fullstack");
   const [streams, setStreams] = useState([]);
   const [stream, setStream] = useState("");
   const [plan, setPlan] = useState(null);
@@ -54,6 +67,15 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
     loadStreams();
     loadHistory();
   }, []);
+
+  function startBuild(type) {
+    setBuildType(type);
+    setView("build");
+    // A fresh build shouldn't show the previous one's leftover plan/diff.
+    setPlan(null);
+    setApplied(null);
+    setError(null);
+  }
 
   // Module 12: streamed instead of a single await — Claude's raw JSON
   // fragments update streamingText as they arrive (see api.js's
@@ -108,13 +130,29 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
 
   const currentStreamLabel = streams.find((s) => s.id === stream)?.label || stream;
 
+  // On the build screen, only show history for the type you're currently
+  // building — a custom stream's builds are whatever isn't one of the
+  // three built-ins, same grouping Dashboard.jsx uses for its counts.
+  const visibleHistory = history.filter((h) =>
+    buildType === "custom" ? !["fullstack", "mobile", "k8s"].includes(h.stream) : h.stream === buildType
+  );
+
   return (
     <div className="page">
       <header>
         <div className="header-row">
           <div>
-            <h1>FeatureForge</h1>
-            <p>Describe a feature. Review the diff. Apply it for real.</p>
+            {view === "build" && (
+              <button type="button" className="link-btn back-link" onClick={() => setView("dashboard")}>
+                ← Studio
+              </button>
+            )}
+            <h1>{view === "dashboard" ? "FeatureForge Studio" : TYPE_LABELS[buildType]}</h1>
+            <p>
+              {view === "dashboard"
+                ? "Pick what you're building. Describe it. Review the diff. Ship it."
+                : "Describe a feature. Review the diff. Apply it for real."}
+            </p>
           </div>
           <div className="account">
             <span>{user.email}</span>
@@ -125,84 +163,92 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
         </div>
       </header>
 
-      <FeatureRequestForm
-        streams={streams}
-        loading={loading}
-        onSubmit={handlePlan}
-        onToggleNewStream={() => setShowNewStream((v) => !v)}
-        showingNewStream={showNewStream}
-        presetCustomStream={presetCustomStream}
-      />
+      {view === "dashboard" ? (
+        <Dashboard streams={streams} history={history} onStartBuild={startBuild} />
+      ) : (
+        <>
+          <FeatureRequestForm
+            key={buildType}
+            initialType={buildType}
+            streams={streams}
+            loading={loading}
+            onSubmit={handlePlan}
+            onToggleNewStream={() => setShowNewStream((v) => !v)}
+            showingNewStream={showNewStream}
+            presetCustomStream={presetCustomStream}
+          />
 
-      {showNewStream && (
-        <NewStreamForm
-          onCreated={(newStream) => {
-            setShowNewStream(false);
-            loadStreams().then(() => setPresetCustomStream(newStream.id));
-          }}
-          onError={handleApiError}
-        />
-      )}
-
-      {loading === "plan" && (
-        <div className="streaming-preview">
-          <p className="streaming-label">Claude is writing the plan…</p>
-          <pre>{streamingText || "…"}</pre>
-        </div>
-      )}
-
-      {error && <p className="error">{error}</p>}
-
-      {plan && (
-        <section className="plan">
-          <h2>Plan</h2>
-          <p className="summary">{plan.summary}</p>
-
-          {plan.files.map((f) => (
-            <div key={f.path} className="file-change">
-              <div className="file-change__head">
-                <span className={`badge badge-${f.action}`}>{f.action}</span>
-                <code>{f.path}</code>
-              </div>
-              <p className="explanation">{f.explanation}</p>
-              <DiffView diff={f.diff} />
-            </div>
-          ))}
-
-          {!applied ? (
-            <button onClick={handleApply} disabled={loading === "apply"} className="apply-btn">
-              {loading === "apply" ? "Applying…" : "Apply to disk"}
-            </button>
-          ) : (
-            <p className="applied-note">
-              Applied {applied.applied.length} file{applied.applied.length === 1 ? "" : "s"} to the{" "}
-              <strong>{currentStreamLabel}</strong> stream's directory.
-            </p>
+          {showNewStream && (
+            <NewStreamForm
+              onCreated={(newStream) => {
+                setShowNewStream(false);
+                loadStreams().then(() => setPresetCustomStream(newStream.id));
+              }}
+              onError={handleApiError}
+            />
           )}
-        </section>
-      )}
 
-      <section className="history">
-        <h2>Your history</h2>
-        {history.length > 0 ? (
-          <ul className="history-list">
-            {history.map((h) => (
-              <li key={h.id} className="history-item">
-                <span className={`badge badge-${h.status === "applied" ? "create" : "modify"}`}>
-                  {h.status}
-                </span>
-                <span className="history-desc">{h.description}</span>
-                <span className="history-meta">
-                  {h.stream} · {h.fileCount} file{h.fileCount === 1 ? "" : "s"} ·{" "}
-                  {new Date(h.createdAt).toLocaleString()}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          historyLoaded && <p className="empty-state">No requests yet — plan one above to get started.</p>
-        )}
-      </section>
+          {loading === "plan" && (
+            <div className="streaming-preview">
+              <p className="streaming-label">Claude is writing the plan…</p>
+              <pre>{streamingText || "…"}</pre>
+            </div>
+          )}
+
+          {error && <p className="error">{error}</p>}
+
+          {plan && (
+            <section className="plan">
+              <h2>Plan</h2>
+              <p className="summary">{plan.summary}</p>
+
+              {plan.files.map((f) => (
+                <div key={f.path} className="file-change">
+                  <div className="file-change__head">
+                    <span className={`badge badge-${f.action}`}>{f.action}</span>
+                    <code>{f.path}</code>
+                  </div>
+                  <p className="explanation">{f.explanation}</p>
+                  <DiffView diff={f.diff} />
+                </div>
+              ))}
+
+              {!applied ? (
+                <button onClick={handleApply} disabled={loading === "apply"} className="apply-btn">
+                  {loading === "apply" ? "Applying…" : "Apply to disk"}
+                </button>
+              ) : (
+                <p className="applied-note">
+                  Applied {applied.applied.length} file{applied.applied.length === 1 ? "" : "s"} to the{" "}
+                  <strong>{currentStreamLabel}</strong> stream's directory.
+                </p>
+              )}
+            </section>
+          )}
+
+          <section className="history">
+            <h2>{TYPE_LABELS[buildType]} history</h2>
+            {visibleHistory.length > 0 ? (
+              <ul className="history-list">
+                {visibleHistory.map((h) => (
+                  <li key={h.id} className="history-item">
+                    <span className={`badge badge-${h.status === "applied" ? "create" : "modify"}`}>
+                      {h.status}
+                    </span>
+                    <span className="history-desc">{h.description}</span>
+                    <span className="history-meta">
+                      {h.stream} · {h.fileCount} file{h.fileCount === 1 ? "" : "s"} ·{" "}
+                      {new Date(h.createdAt).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              historyLoaded && <p className="empty-state">No requests yet — plan one above to get started.</p>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

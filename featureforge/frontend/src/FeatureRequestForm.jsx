@@ -43,8 +43,12 @@ export default function FeatureRequestForm({
   onToggleNewStream,
   showingNewStream,
   presetCustomStream,
+  initialType,
 }) {
-  const [type, setType] = useState("fullstack");
+  // App.jsx remounts this component (via a `key` tied to the dashboard
+  // card you clicked) whenever it wants a different initial type — that's
+  // simpler and more predictable than reacting to a changing prop mid-life.
+  const [type, setType] = useState(initialType || "fullstack");
   const [fullstack, setFullstack] = useState({
     title: "",
     description: "",
