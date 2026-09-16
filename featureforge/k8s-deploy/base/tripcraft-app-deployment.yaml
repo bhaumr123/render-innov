@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tripcraft-app
+  labels:
+    app: tripcraft-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tripcraft-app
+  template:
+    metadata:
+      labels:
+        app: tripcraft-app
+    spec:
+      containers:
+        - name: tripcraft-app
+          image: tripcraft-app:latest
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: tripcraft-app-config
+          env:
+            # Example of a secret reference placeholder - fill in actual secret
+            # out-of-band via `kubectl create secret` or your secrets manager.
+            # - name: DATABASE_URL
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: tripcraft-app-secret
+            #       key: database-url
+            - name: PLACEHOLDER_SECRET
+              value: ""
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

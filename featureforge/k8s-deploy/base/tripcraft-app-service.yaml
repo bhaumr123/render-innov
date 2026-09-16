@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tripcraft-app
+  labels:
+    app: tripcraft-app
+spec:
+  type: ClusterIP
+  selector:
+    app: tripcraft-app
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3001
+      protocol: TCP
