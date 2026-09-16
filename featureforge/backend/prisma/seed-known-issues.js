@@ -68,6 +68,23 @@ const ISSUES = [
       "building this very self-improvement feature, adding error logging to " +
       "every route and noticing this one had nowhere to hook into.",
   },
+  {
+    title: "max_tokens: 8000 silently truncated real multi-file plans",
+    area: "features-api",
+    description:
+      "Adding the 'website' stream, a real landing-page request (two files: " +
+      "a full index.html and styles.css) hit stop_reason 'max_tokens' before " +
+      "the tool call's JSON finished streaming — the Anthropic SDK then " +
+      "returns an unparseable `{}` as the tool input, which planFeature/plan " +
+      "FeatureStream silently accepted as 'no files, no summary' instead of " +
+      "surfacing an error. Not website-specific: any stream generating " +
+      "enough real content (a bigger fullstack feature, a busy k8s manifest " +
+      "set) could hit the same 8000-token ceiling. Fixed by raising it " +
+      "(16000 non-streaming, 64000 for the streaming endpoint, per current " +
+      "model output limits) and by checking stop_reason explicitly — a " +
+      "truncated response now throws a clear error instead of returning an " +
+      "empty plan that looks like Claude just had nothing to say.",
+  },
 ];
 
 async function main() {

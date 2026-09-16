@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { isValidStream, looksLikeDuplicatedRoot, STREAMS } from "../src/lib/targetProject.js";
 
 describe("isValidStream", () => {
-  it("accepts the two real streams", () => {
+  it("accepts the built-in streams", () => {
     expect(isValidStream("fullstack")).toBe(true);
     expect(isValidStream("k8s")).toBe(true);
+    expect(isValidStream("mobile")).toBe(true);
+    expect(isValidStream("website")).toBe(true);
   });
 
   it("rejects anything else", () => {

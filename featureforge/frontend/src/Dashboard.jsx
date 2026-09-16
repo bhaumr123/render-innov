@@ -22,13 +22,19 @@ const BUILT_IN_CARDS = [
     title: "Kubernetes",
     description: "Deployment manifests, Dockerfiles, Services.",
   },
+  {
+    type: "website",
+    icon: "🌐",
+    title: "Website",
+    description: "Landing pages, portfolios, blogs, marketing sites.",
+  },
 ];
 
 function summarize(history) {
   const counts = {};
   const latest = {};
   for (const h of history) {
-    const key = ["fullstack", "mobile", "k8s"].includes(h.stream) ? h.stream : "custom";
+    const key = ["fullstack", "mobile", "k8s", "website"].includes(h.stream) ? h.stream : "custom";
     counts[key] = (counts[key] || 0) + 1;
     if (!latest[key] || new Date(h.createdAt) > new Date(latest[key])) {
       latest[key] = h.createdAt;

@@ -404,4 +404,37 @@ like "add a trip request form" through FeatureForge.
     `npm run test:analyzer` script (`backend/scripts/test-analyzer.js`)
     for manually exercising the analyzer against a real local model once
     you have one pulled.
+  - **Website stream**: a fourth built-in build type — `targetProject.js`'s
+    `STREAMS.website` (→ `featureforge/websites/`) and a new system prompt
+    in `claudeClient.js` — for general-purpose sites (landing pages,
+    portfolios, blogs, marketing sites, storefront UIs) that aren't
+    TripCraft-specific. Plain HTML/CSS/JS, no build step, no framework —
+    every page has to open directly in a browser. Unlike every other
+    stream, this one can hold many unrelated site projects side by side,
+    so the prompt's central rule is that every distinct site gets its own
+    kebab-cased subdirectory (`acme-coffee/index.html`, not
+    `index.html`) — otherwise a second site's `index.html` would silently
+    overwrite the first's. `FeatureRequestForm.jsx` got a matching guided
+    tab (site name, site type, sections/pages, style/tone) and
+    `Dashboard.jsx` a fifth build card.
+    **Verified live, end to end, twice**, through the real browser UI
+    (Playwright) with real Claude calls, no mocking: a coffee-subscription
+    landing page (hero, about, three pricing cards, contact form) and a
+    designer's portfolio, each landing in its own subdirectory with zero
+    collision. Screenshotted at desktop and mobile widths — genuinely
+    responsive, a real color system and type scale, not a wireframe.
+    **Real bug found and fixed along the way**: the first landing-page
+    request came back with `files: []` and no summary — not a website-
+    specific bug, but `max_tokens: 8000` (both `planFeature` and
+    `planFeatureStream` had always used this) silently truncating a
+    response whose full HTML+CSS output needed more room than that,
+    with the SDK handing back an unparseable `{}` for the cut-off tool
+    call. Fixed by raising the ceiling (16000 non-streaming, 64000
+    streaming — current Sonnet 5 output limits allow up to 128K, but the
+    non-streaming endpoint needs to stay well under the SDK's HTTP
+    timeout) and by checking `stop_reason` explicitly, so a future
+    truncation throws a clear error instead of masquerading as an empty
+    plan. Seeded as a 7th `KnownIssue` — the self-improvement agent's
+    memory now includes a bug found while building the feature right next
+    to it in this same roadmap entry.
   - Still open: run tests before applying, undo/rollback, SQLite → Postgres.

@@ -53,6 +53,17 @@ export const STREAMS = {
     // backend needs to match its actual routes, not guess them.
     referenceStreams: ["fullstack"],
   },
+  website: {
+    label: "Website",
+    description:
+      "General-purpose websites — landing pages, portfolios, blogs, marketing sites — built as plain HTML/CSS/JS.",
+    // Not tied to TripCraft: this stream can hold any number of unrelated
+    // site projects, each in its own subdirectory (see the system prompt),
+    // so its root is its own top-level directory rather than living under
+    // tripcraft-app/.
+    root: resolveRoot("websites"),
+    referenceStreams: [],
+  },
 };
 
 const CUSTOM_STREAMS_ROOT = resolveRoot("custom");

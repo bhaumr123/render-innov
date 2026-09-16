@@ -11,6 +11,7 @@ const TYPE_LABELS = {
   fullstack: "Full-Stack",
   mobile: "Mobile (Android)",
   k8s: "Kubernetes",
+  website: "Website",
   custom: "Custom stream",
 };
 
@@ -134,9 +135,9 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
 
   // On the build screen, only show history for the type you're currently
   // building — a custom stream's builds are whatever isn't one of the
-  // three built-ins, same grouping Dashboard.jsx uses for its counts.
+  // built-ins, same grouping Dashboard.jsx uses for its counts.
   const visibleHistory = history.filter((h) =>
-    buildType === "custom" ? !["fullstack", "mobile", "k8s"].includes(h.stream) : h.stream === buildType
+    buildType === "custom" ? !["fullstack", "mobile", "k8s", "website"].includes(h.stream) : h.stream === buildType
   );
 
   return (

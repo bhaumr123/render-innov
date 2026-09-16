@@ -12,6 +12,15 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
+// A real bug, found live while building the 'website' stream: a landing
+// page's full HTML + CSS genuinely needs more than 8000 output tokens, and
+// forced tool-use has nowhere to put the overflow — it just cuts off
+// mid-JSON (stop_reason "max_tokens"), and the tool call's `input` comes
+// back as an unparseable `{}` instead of a partial result. The streaming
+// endpoint has no HTTP-timeout reason to stay low, so it gets more room.
+const MAX_TOKENS_NON_STREAMING = 16000;
+const MAX_TOKENS_STREAMING = 64000;
+
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -145,6 +154,44 @@ const STREAM_PROMPTS = {
     "  a network security config exception (e.g. talking to a local dev",
     "  server over plain http://10.0.2.2) and add one if so.",
   ].join("\n"),
+
+  website: [
+    "You are the code-generation engine inside FeatureForge, working on the",
+    "'website' stream: general-purpose websites — landing pages, portfolios,",
+    "blogs, marketing sites, storefront UIs — NOT tied to TripCraft. This",
+    "stream can hold many unrelated site projects side by side.",
+    "",
+    "Rules:",
+    ...COMMON_RULES,
+    "- Plain HTML/CSS/JS. No build step, no framework, no npm dependency —",
+    "  every page must open directly in a browser or work from a static",
+    "  file server with zero setup.",
+    "- Every distinct site (a new brand/name the request introduces) gets",
+    "  its own subdirectory, kebab-cased from its name (e.g. a site called",
+    "  'Acme Coffee' -> `acme-coffee/index.html`, `acme-coffee/styles.css`).",
+    "  Never write a site's files straight into the stream root — that would",
+    "  collide with every other site this stream has ever built. If the",
+    "  request is clearly adding to or changing an existing site (reuse its",
+    "  name/tree from the context below), write into that same subdirectory",
+    "  instead of creating a near-duplicate one.",
+    "- Semantic HTML5 (`header`, `nav`, `main`, `section`, `footer`), a",
+    "  responsive layout that works from phone width up, and real alt text",
+    "  on every `img`.",
+    "- A real design, not a wireframe: a coherent color palette and type",
+    "  scale via CSS custom properties in :root, enough whitespace and",
+    "  visual hierarchy to look like a site someone would actually ship —",
+    "  never bare unstyled HTML.",
+    "- No embedded base64 images and no invented binary assets — you can",
+    "  only write text. Use CSS (gradients, shapes, an emoji, a system icon",
+    "  font) for visual elements, or a clearly-labeled placeholder, and say",
+    "  in `explanation` when a real photo/logo still needs adding locally.",
+    "- Match the requested site type's real-world shape: a landing page",
+    "  needs a hero + a clear call-to-action; a portfolio needs a project",
+    "  grid; a blog needs a post list template AND at least one real post",
+    "  page linked from it; a storefront needs a product grid with prices",
+    "  (checkout/payment is out of scope here — that's the fullstack",
+    "  stream's job; note that in `explanation` if it comes up).",
+  ].join("\n"),
 };
 
 // promptSource comes from targetProject.js's getStreamPromptSource():
@@ -204,7 +251,7 @@ export async function planFeature(promptSource, description, { tree, files }, re
   const client = getClient();
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 8000,
+    max_tokens: MAX_TOKENS_NON_STREAMING,
     system: buildSystemPrompt(promptSource),
     tools: [CHANGE_TOOL],
     tool_choice: { type: "tool", name: "write_code_changes" },
@@ -219,6 +266,12 @@ export async function planFeature(promptSource, description, { tree, files }, re
   const toolUse = response.content.find((block) => block.type === "tool_use");
   if (!toolUse) {
     throw new Error("Claude did not return a structured plan.");
+  }
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(
+      `Claude's response was cut off at the ${MAX_TOKENS_NON_STREAMING}-token limit before finishing ` +
+        "the plan — try asking for a smaller change, or splitting this into separate requests."
+    );
   }
   return toolUse.input;
 }
@@ -241,7 +294,7 @@ export async function planFeatureStream(
   const client = getClient();
   const stream = client.messages.stream({
     model: MODEL,
-    max_tokens: 8000,
+    max_tokens: MAX_TOKENS_STREAMING,
     system: buildSystemPrompt(promptSource),
     tools: [CHANGE_TOOL],
     tool_choice: { type: "tool", name: "write_code_changes" },
@@ -263,6 +316,12 @@ export async function planFeatureStream(
   const toolUse = finalMessage.content.find((block) => block.type === "tool_use");
   if (!toolUse) {
     throw new Error("Claude did not return a structured plan.");
+  }
+  if (finalMessage.stop_reason === "max_tokens") {
+    throw new Error(
+      `Claude's response was cut off at the ${MAX_TOKENS_STREAMING}-token limit before finishing ` +
+        "the plan — try asking for a smaller change, or splitting this into separate requests."
+    );
   }
   return toolUse.input;
 }

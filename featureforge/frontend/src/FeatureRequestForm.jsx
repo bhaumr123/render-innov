@@ -9,6 +9,7 @@ const TYPES = [
   { id: "fullstack", label: "Full-Stack" },
   { id: "mobile", label: "Mobile (Android)" },
   { id: "k8s", label: "Kubernetes" },
+  { id: "website", label: "Website" },
   { id: "custom", label: "Custom stream" },
 ];
 
@@ -32,6 +33,12 @@ function composeDescription(type, f) {
     if (f.resourceType === "Deployment") lines.push(`Replicas: ${f.replicas}`);
     if (f.resources.trim()) lines.push(`Resource limits: ${f.resources}`);
     lines.push(`What it should do: ${f.description}`);
+  } else if (type === "website") {
+    lines.push(`Site name: ${f.siteName}`);
+    lines.push(`Site type: ${f.siteType}`);
+    if (f.sections.trim()) lines.push(`Sections/pages needed: ${f.sections}`);
+    lines.push(`What it should do: ${f.description}`);
+    if (f.style.trim()) lines.push(`Style/tone: ${f.style}`);
   }
   return lines.join("\n");
 }
@@ -69,6 +76,14 @@ export default function FeatureRequestForm({
     resources: "",
     description: "",
   });
+  const [website, setWebsite] = useState({
+    title: "",
+    siteName: "",
+    siteType: "Landing page",
+    sections: "",
+    description: "",
+    style: "",
+  });
   const [customStreamId, setCustomStreamId] = useState("");
   const [customDescription, setCustomDescription] = useState("");
 
@@ -90,7 +105,7 @@ export default function FeatureRequestForm({
       onSubmit(customStreamId, customDescription);
       return;
     }
-    const fields = type === "fullstack" ? fullstack : type === "mobile" ? mobile : k8s;
+    const fields = { fullstack, mobile, k8s, website }[type];
     onSubmit(type, composeDescription(type, fields));
   }
 
@@ -256,6 +271,66 @@ export default function FeatureRequestForm({
               placeholder="e.g. add a ConfigMap for the backend's environment variables"
               rows={3}
               required
+            />
+          </label>
+        </>
+      )}
+
+      {type === "website" && (
+        <>
+          <label>
+            Feature title
+            <input
+              value={website.title}
+              onChange={(e) => setWebsite({ ...website, title: e.target.value })}
+              placeholder="e.g. Add a pricing section"
+              required
+            />
+          </label>
+          <label>
+            Site name
+            <input
+              value={website.siteName}
+              onChange={(e) => setWebsite({ ...website, siteName: e.target.value })}
+              placeholder="e.g. Acme Coffee"
+              required
+            />
+          </label>
+          <label>
+            Site type
+            <select value={website.siteType} onChange={(e) => setWebsite({ ...website, siteType: e.target.value })}>
+              <option>Landing page</option>
+              <option>Portfolio</option>
+              <option>Blog</option>
+              <option>Business / marketing site</option>
+              <option>E-commerce storefront</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label>
+            Sections/pages needed <span className="hint">(optional — e.g. "Hero, About, Pricing, Contact")</span>
+            <input
+              value={website.sections}
+              onChange={(e) => setWebsite({ ...website, sections: e.target.value })}
+              placeholder="leave blank and describe it below instead"
+            />
+          </label>
+          <label>
+            What should it do?
+            <textarea
+              value={website.description}
+              onChange={(e) => setWebsite({ ...website, description: e.target.value })}
+              placeholder="e.g. a one-page landing site for a coffee subscription, with a signup form"
+              rows={3}
+              required
+            />
+          </label>
+          <label>
+            Style/tone <span className="hint">(optional — e.g. "modern and minimal, warm earth tones")</span>
+            <input
+              value={website.style}
+              onChange={(e) => setWebsite({ ...website, style: e.target.value })}
+              placeholder="leave blank for sensible defaults"
             />
           </label>
         </>
