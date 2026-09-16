@@ -1,7 +1,13 @@
 // One place for "talk to the backend, attach the login token if we have
 // one." localStorage persists across page reloads (unlike component
 // state), which is exactly what you want for "stay logged in."
-export const API_BASE = "http://localhost:4000";
+//
+// Vite exposes any env var prefixed VITE_ via import.meta.env, baked in at
+// build time (not read at runtime — there's no server here to read a real
+// env var from, this becomes static JS). Falls back to localhost so local
+// dev needs zero configuration; Module 11 sets VITE_API_BASE to the real
+// deployed backend URL when building for production.
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 export function getToken() {
   return localStorage.getItem("featureforge_token");
