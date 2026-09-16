@@ -182,9 +182,9 @@
       </p>
     </div>
     <dl class="titleblock__fields">
-      <div class="field"><dt>Streams</dt><dd>fullstack · k8s</dd></div>
+      <div class="field"><dt>Streams</dt><dd>fullstack · k8s · + custom (runtime)</dd></div>
       <div class="field"><dt>Third-party API</dt><dd>Anthropic Claude</dd></div>
-      <div class="field"><dt>Status</dt><dd>Modules 0–3b done</dd></div>
+      <div class="field"><dt>Status</dt><dd>Modules 0–11 done · 12: 2/5 stretch</dd></div>
       <div class="field"><dt>Repo path</dt><dd class="mono">featureforge/</dd></div>
     </dl>
   </div>
@@ -206,7 +206,7 @@
 
     <figure class="diagram-frame">
       <svg viewBox="0 0 960 760" role="img"
-        aria-label="Layered diagram of the full FeatureForge system. A browser talks to a planned FeatureForge React frontend, which talks to the Express backend. The backend already has feature routes, a Claude client, a diff engine, and sandboxed filesystem access; it still needs auth middleware and a request-history database, both planned. The backend calls the external Claude API and writes into two target directories: tripcraft-app, which will itself contain a planned frontend, backend, and database once built through the fullstack stream, and k8s-deploy, which will contain a planned Dockerfile and Kubernetes manifests once built through the k8s stream. Both targets ultimately reach a deploy target: Render today, or a Kubernetes cluster once k8s-deploy is real.">
+        aria-label="Layered diagram of the full FeatureForge system, now mostly built. A browser talks to the built FeatureForge React frontend, which talks to the Express backend. The backend has feature routes, a Claude client with SSE streaming, a diff engine, sandboxed filesystem access, JWT auth middleware, and a SQLite database via Prisma storing users, feature requests, and registered custom streams. The backend calls the external Claude API and writes into target directories: tripcraft-app, whose Express backend is real (built through the fullstack stream) though it has no frontend or database of its own since none was requested, k8s-deploy, whose Dockerfile and Kubernetes manifests are all real (built through the k8s stream), and any custom stream registered at runtime into its own directory. A Render deployment blueprint is prepared but not yet applied live.">
         <defs>
           <marker id="arrow3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
@@ -217,10 +217,10 @@
         <rect x="380" y="20" width="200" height="50" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.3"/>
         <text x="480" y="50" text-anchor="middle" class="node-label" font-size="12.5">Your browser</text>
 
-        <!-- FF frontend, planned -->
-        <rect x="350" y="102" width="260" height="52" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.8"/>
+        <!-- FF frontend, built -->
+        <rect x="350" y="102" width="260" height="52" rx="6" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.3"/>
         <text x="480" y="124" text-anchor="middle" class="node-label" font-size="12">FeatureForge Frontend</text>
-        <text x="480" y="141" text-anchor="middle" class="node-sub" font-size="9.5">○ React — Module 6–8</text>
+        <text x="480" y="141" text-anchor="middle" class="node-sub" font-size="9.5">● React — Modules 6–9</text>
 
         <line x1="480" y1="70" x2="480" y2="100" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
         <line x1="480" y1="154" x2="480" y2="186" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
@@ -232,8 +232,8 @@
         <text x="255" y="255" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Claude client (forced tool-use)</text>
         <text x="255" y="277" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Diff engine (diff package)</text>
         <text x="255" y="299" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Sandboxed filesystem access</text>
-        <text x="255" y="321" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Auth middleware (JWT) — Module 5</text>
-        <text x="255" y="343" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Request history persisted — Module 4</text>
+        <text x="255" y="321" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Auth middleware (JWT) + SSE streaming</text>
+        <text x="255" y="343" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Request history + custom streams persisted</text>
 
         <!-- claude api -->
         <rect x="760" y="90" width="170" height="66" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
@@ -242,11 +242,12 @@
         <line x1="732" y1="220" x2="758" y2="145" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#arrow3)"/>
 
         <!-- db -->
-        <rect x="760" y="210" width="170" height="80" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.8"/>
-        <text x="845" y="234" text-anchor="middle" class="node-label" font-size="12">SQLite (Prisma)</text>
-        <text x="845" y="251" text-anchor="middle" class="node-sub" font-size="9">○ Module 4</text>
-        <text x="845" y="267" text-anchor="middle" class="node-sub" font-size="9">Users · FeatureRequests</text>
-        <line x1="732" y1="270" x2="758" y2="255" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3" marker-end="url(#arrow3)" opacity="0.8"/>
+        <rect x="760" y="210" width="170" height="80" rx="6" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.3"/>
+        <text x="845" y="232" text-anchor="middle" class="node-label" font-size="12">SQLite (Prisma)</text>
+        <text x="845" y="248" text-anchor="middle" class="node-sub" font-size="9">● Module 4 · still SQLite</text>
+        <text x="845" y="263" text-anchor="middle" class="node-sub" font-size="9">Users · FeatureRequests</text>
+        <text x="845" y="278" text-anchor="middle" class="node-sub" font-size="9">· Streams</text>
+        <line x1="732" y1="270" x2="758" y2="255" stroke="var(--accent-2)" stroke-width="1.2" marker-end="url(#arrow3)"/>
 
         <!-- stream outputs -->
         <line x1="330" y1="364" x2="255" y2="428" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow3)"/>
@@ -255,27 +256,32 @@
         <line x1="630" y1="364" x2="700" y2="428" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow3)"/>
         <text x="720" y="400" class="arrow-label" font-size="10">k8s stream writes</text>
 
+        <text x="480" y="418" text-anchor="middle" class="node-sub" font-size="8.5">
+          <tspan fill="var(--accent-2)">●</tspan> + any custom stream → featureforge/custom/&lt;slug&gt;/ — Module 12
+        </text>
+
         <rect x="90" y="430" width="350" height="190" rx="6" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/>
         <text x="265" y="454" text-anchor="middle" class="node-label" font-size="12.5">tripcraft-app/</text>
         <text x="265" y="470" text-anchor="middle" class="node-sub" font-size="9.5">fullstack stream output</text>
-        <text x="115" y="495" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Frontend — React (Module 6–8)</text>
-        <text x="115" y="519" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Backend — Express API</text>
-        <text x="115" y="543" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Database — SQLite</text>
-        <text x="115" y="567" class="node-sub" font-size="9.5" opacity="0.8">built one feature request at a time,</text>
-        <text x="115" y="583" class="node-sub" font-size="9.5" opacity="0.8">same way FeatureForge itself was</text>
+        <text x="115" y="495" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Frontend — React (never requested)</text>
+        <text x="115" y="519" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Backend — Express API (real routes)</text>
+        <text x="115" y="543" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Database — SQLite (never requested)</text>
+        <text x="115" y="567" class="node-sub" font-size="9.5" opacity="0.8">built one feature request at a time —</text>
+        <text x="115" y="583" class="node-sub" font-size="9.5" opacity="0.8">only what's been asked for exists</text>
 
         <rect x="520" y="430" width="350" height="190" rx="6" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/>
         <text x="695" y="454" text-anchor="middle" class="node-label" font-size="12.5">k8s-deploy/</text>
         <text x="695" y="470" text-anchor="middle" class="node-sub" font-size="9.5">k8s stream output</text>
-        <text x="545" y="495" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Dockerfile</text>
-        <text x="545" y="519" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Deployment.yaml</text>
-        <text x="545" y="543" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> Service.yaml</text>
-        <text x="545" y="567" class="node-sub" font-size="10.5"><tspan fill="var(--muted)">○</tspan> ConfigMap.yaml</text>
+        <text x="545" y="495" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Dockerfile</text>
+        <text x="545" y="519" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Deployment.yaml</text>
+        <text x="545" y="543" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> Service.yaml</text>
+        <text x="545" y="567" class="node-sub" font-size="10.5"><tspan fill="var(--accent-2)">●</tspan> ConfigMap.yaml</text>
 
         <!-- deploy target -->
-        <rect x="280" y="672" width="400" height="60" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.3"/>
-        <text x="480" y="698" text-anchor="middle" class="node-label" font-size="12">Deploy target</text>
-        <text x="480" y="716" text-anchor="middle" class="node-sub" font-size="9.5">Render today · Kubernetes once k8s-deploy/ is real</text>
+        <rect x="280" y="672" width="400" height="60" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.85"/>
+        <text x="480" y="695" text-anchor="middle" class="node-label" font-size="12">Deploy target — Render</text>
+        <text x="480" y="712" text-anchor="middle" class="node-sub" font-size="9">○ blueprint ready (Module 11) — not yet clicked live</text>
+        <text x="480" y="725" text-anchor="middle" class="node-sub" font-size="8.5" opacity="0.75">needs your own Render account</text>
 
         <line x1="270" y1="620" x2="400" y2="670" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow3)" opacity="0.85"/>
         <text x="290" y="652" class="arrow-label" font-size="9.5">container image</text>
@@ -286,7 +292,10 @@
       <figcaption>
         <b>Fig. 0</b> — Nothing here is invented for the diagram: every solid
         piece is code you've already run against; every hollow piece is a
-        named module in ROADMAP.md, not a vague someday.
+        named module in ROADMAP.md, not a vague someday. Most of the system
+        turned solid this round — the remaining hollow pieces are honest
+        gaps (tripcraft-app never got its own frontend/DB because nobody
+        asked for one; Render deployment is prepared, not clicked live).
       </figcaption>
     </figure>
   </section>
@@ -411,7 +420,7 @@
 
     <figure class="diagram-frame">
       <svg viewBox="0 0 920 400" role="img"
-        aria-label="Diagram: a single STREAMS registry configures two rows, fullstack and k8s, each with its own root directory and system prompt. Both feed the same shared plan, diff, and apply pipeline. The pipeline writes fullstack changes only into tripcraft-app and k8s changes only into k8s-deploy; an attempt to cross from the k8s stream into tripcraft-app is shown blocked.">
+        aria-label="Diagram: a stream registry configures fullstack and k8s, each with its own root directory and system prompt, plus any custom stream registered at runtime via POST /api/features/streams. All feed the same shared plan, diff, and apply pipeline. The pipeline writes fullstack changes only into tripcraft-app and k8s changes only into k8s-deploy; an attempt to cross from the k8s stream into tripcraft-app is shown blocked.">
         <defs>
           <marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
@@ -419,20 +428,21 @@
         </defs>
 
         <!-- registry -->
-        <rect x="260" y="24" width="400" height="110" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.3"/>
-        <text x="460" y="46" text-anchor="middle" class="node-label" font-size="12.5">STREAMS registry</text>
-        <line x1="280" y1="58" x2="640" y2="58" stroke="currentColor" stroke-width="0.7" opacity="0.4"/>
-        <text x="290" y="76" class="node-sub" font-size="10.5">fullstack</text>
-        <text x="420" y="76" class="arrow-label" font-size="10">root: tripcraft-app/</text>
-        <text x="290" y="98" class="node-sub" font-size="10.5">k8s</text>
-        <text x="420" y="98" class="arrow-label" font-size="10">root: k8s-deploy/</text>
-        <text x="290" y="120" class="node-sub" font-size="9.5" opacity="0.75">each row also picks its own Claude system prompt</text>
+        <rect x="230" y="24" width="460" height="132" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.3"/>
+        <text x="460" y="46" text-anchor="middle" class="node-label" font-size="12.5">Stream registry — built-in + custom (DB-backed)</text>
+        <line x1="250" y1="58" x2="670" y2="58" stroke="currentColor" stroke-width="0.7" opacity="0.4"/>
+        <text x="260" y="76" class="node-sub" font-size="10.5">fullstack</text>
+        <text x="390" y="76" class="arrow-label" font-size="10">root: tripcraft-app/</text>
+        <text x="260" y="98" class="node-sub" font-size="10.5">k8s</text>
+        <text x="390" y="98" class="arrow-label" font-size="10">root: k8s-deploy/</text>
+        <text x="260" y="120" class="node-sub" font-size="9.5" opacity="0.75">each row also picks its own Claude system prompt</text>
+        <text x="260" y="142" class="node-sub" font-size="9" fill="var(--accent-2)">+ any custom stream — POST /api/features/streams (Module 12)</text>
 
         <!-- pipeline -->
         <rect x="335" y="180" width="250" height="56" rx="6" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.5"/>
         <text x="460" y="213" text-anchor="middle" class="node-label" font-size="12.5">plan / diff / apply pipeline</text>
-        <line x1="460" y1="134" x2="460" y2="176" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow2)"/>
-        <text x="475" y="158" class="arrow-label" font-size="10">stream param selects the row</text>
+        <line x1="460" y1="156" x2="460" y2="176" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow2)"/>
+        <text x="530" y="170" class="arrow-label" font-size="10">stream param selects the row</text>
 
         <!-- targets -->
         <rect x="90" y="310" width="220" height="70" rx="6" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.2"/>
@@ -463,10 +473,100 @@
     </figure>
   </section>
 
-  <!-- ================= REFERENCE ================= -->
+  <!-- ================= DIAGRAM 3 — MODULE 12 ADDITIONS ================= -->
   <section>
     <div class="section-head">
       <span class="num">04</span>
+      <h2>Module 12: two stretch goals, same pipeline underneath</h2>
+    </div>
+    <p class="section-note">
+      Neither of these changes the plan → diff → apply mechanism from Fig. 1 —
+      streaming changes how the response is <em>delivered</em>; custom streams
+      change how a stream's config is <em>looked up</em>. Same core code either way.
+    </p>
+
+    <figure class="diagram-frame">
+      <svg viewBox="0 0 960 300" role="img"
+        aria-label="Two side-by-side diagrams. Left: streaming — the browser opens an SSE connection to POST /:stream/plan/stream, the backend relays Claude's raw input_json_delta fragments as they arrive so the browser can show a live preview, then sends a final done event with the same structured plan the non-streaming endpoint returns. Right: custom streams — the browser posts a slug, label, description and system prompt to POST /api/features/streams, the backend validates the slug, writes a new row to the Stream table, creates a directory under featureforge/custom, and adds it to an in-memory cache, after which it is immediately usable at /api/features/that-slug/plan.">
+        <defs>
+          <marker id="arrow4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <line x1="480" y1="16" x2="480" y2="284" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4" opacity="0.4"/>
+
+        <!-- LEFT: streaming -->
+        <text x="240" y="26" text-anchor="middle" class="node-label" font-size="12.5">Streaming a plan response</text>
+
+        <rect x="30" y="46" width="130" height="50" rx="5" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.1"/>
+        <text x="95" y="76" text-anchor="middle" class="node-label" font-size="11">Browser</text>
+
+        <rect x="200" y="46" width="150" height="50" rx="5" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.3"/>
+        <text x="275" y="70" text-anchor="middle" class="node-label" font-size="11">Express API</text>
+        <text x="275" y="84" text-anchor="middle" class="node-sub" font-size="8.5">/:stream/plan/stream</text>
+
+        <rect x="390" y="46" width="130" height="50" rx="5" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.3"/>
+        <text x="455" y="76" text-anchor="middle" class="node-label" font-size="11">Claude API</text>
+
+        <line x1="160" y1="60" x2="196" y2="60" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow4)"/>
+        <text x="178" y="50" text-anchor="middle" class="arrow-label" font-size="8">POST</text>
+
+        <line x1="350" y1="60" x2="386" y2="60" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow4)"/>
+        <line x1="386" y1="82" x2="350" y2="82" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#arrow4)"/>
+        <text x="368" y="98" text-anchor="middle" class="arrow-label" font-size="8">input_json_delta ×N</text>
+
+        <line x1="196" y1="108" x2="164" y2="108" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#arrow4)"/>
+        <text x="180" y="122" text-anchor="middle" class="arrow-label" font-size="8">event: delta (×N)</text>
+
+        <line x1="196" y1="150" x2="164" y2="150" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrow4)"/>
+        <text x="180" y="164" text-anchor="middle" class="arrow-label" font-size="8">event: done — full plan</text>
+
+        <rect x="30" y="185" width="420" height="90" rx="5" fill="var(--surface)" stroke="currentColor" stroke-width="1"/>
+        <text x="240" y="205" text-anchor="middle" class="node-sub" font-size="9.5">runPlan() — identical for both endpoints:</text>
+        <text x="50" y="224" class="node-sub" font-size="9">validate → dup-path guard → diff → save to DB</text>
+        <text x="50" y="242" class="node-sub" font-size="9">plain /plan: one JSON response, at the end</text>
+        <text x="50" y="260" class="node-sub" font-size="9" fill="var(--accent-2)">/plan/stream: same result, delivered as SSE</text>
+
+        <!-- RIGHT: custom streams -->
+        <text x="720" y="26" text-anchor="middle" class="node-label" font-size="12.5">Registering a custom stream</text>
+
+        <rect x="530" y="46" width="130" height="50" rx="5" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.1"/>
+        <text x="595" y="76" text-anchor="middle" class="node-label" font-size="11">Browser</text>
+
+        <rect x="700" y="46" width="230" height="50" rx="5" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.3"/>
+        <text x="815" y="70" text-anchor="middle" class="node-label" font-size="11">POST /api/features/streams</text>
+        <text x="815" y="84" text-anchor="middle" class="node-sub" font-size="8.5">slug, label, description, systemPrompt</text>
+
+        <line x1="660" y1="60" x2="696" y2="60" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow4)"/>
+
+        <rect x="530" y="120" width="400" height="66" rx="5" fill="var(--surface)" stroke="currentColor" stroke-width="1"/>
+        <text x="550" y="140" class="node-sub" font-size="9">1. validate slug · reject built-in/duplicate collisions</text>
+        <text x="550" y="158" class="node-sub" font-size="9">2. INSERT into Stream table (owned by this user)</text>
+        <text x="550" y="176" class="node-sub" font-size="9">3. mkdir featureforge/custom/&lt;slug&gt;/ + add to memory cache</text>
+
+        <line x1="815" y1="96" x2="750" y2="118" stroke="var(--accent-2)" stroke-width="1.2" marker-end="url(#arrow4)"/>
+
+        <rect x="530" y="210" width="400" height="60" rx="5" fill="var(--accent-2-soft)" stroke="var(--accent-2)" stroke-width="1.2"/>
+        <text x="730" y="232" text-anchor="middle" class="node-label" font-size="10.5">Usable immediately</text>
+        <text x="730" y="250" text-anchor="middle" class="node-sub" font-size="9">/api/features/&lt;slug&gt;/plan — same pipeline, no restart</text>
+
+        <line x1="730" y1="186" x2="730" y2="206" stroke="var(--accent-2)" stroke-width="1.2" marker-end="url(#arrow4)"/>
+      </svg>
+      <figcaption>
+        <b>Fig. 3</b> — Verified both live: a real SSE run against the Anthropic
+        API produced incremental fragments followed by a correctly-shaped
+        <code>done</code> event; a stream registered through the browser UI
+        was immediately usable for a real plan → apply round trip with no
+        server restart in between.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= REFERENCE ================= -->
+  <section>
+    <div class="section-head">
+      <span class="num">05</span>
       <h2>Reference</h2>
     </div>
 
@@ -477,9 +577,19 @@
         </thead>
         <tbody>
           <tr>
-            <td class="path">GET /api/features/streams</td>
-            <td>Lists the available streams and what each targets.</td>
+            <td class="path">POST /api/auth/signup, /login, GET /me</td>
+            <td>Account creation, login, and "is my stored token still valid?" — all before anything below is reachable.</td>
             <td>No</td>
+          </tr>
+          <tr>
+            <td class="path">GET /api/features/streams</td>
+            <td>Lists every stream — built-in and custom.</td>
+            <td>No</td>
+          </tr>
+          <tr>
+            <td class="path">POST /api/features/streams</td>
+            <td>Registers a new custom stream: validates the slug, creates its directory, usable immediately.</td>
+            <td><b style="color:var(--accent)">Yes</b> — a new directory, not app files</td>
           </tr>
           <tr>
             <td class="path">POST /api/features/:stream/plan</td>
@@ -487,9 +597,19 @@
             <td>No</td>
           </tr>
           <tr>
+            <td class="path">POST /api/features/:stream/plan/stream</td>
+            <td>Same as above, delivered as Server-Sent Events so the frontend can show Claude "writing" live.</td>
+            <td>No</td>
+          </tr>
+          <tr>
             <td class="path">POST /api/features/:stream/apply</td>
             <td>Looks up a planId from a prior <code>/plan</code> call and writes those exact files.</td>
             <td><b style="color:var(--accent)">Yes</b> — sandboxed to that stream's root</td>
+          </tr>
+          <tr>
+            <td class="path">GET /api/features/history</td>
+            <td>Every plan this user has made, most recent first — status, file count, timestamps.</td>
+            <td>No</td>
           </tr>
         </tbody>
       </table>
@@ -501,12 +621,14 @@
           <tr><th>Layer</th><th>Choice</th></tr>
         </thead>
         <tbody>
-          <tr><td>Frontend</td><td>React (Vite) + React Router + Tailwind CSS — not yet built</td></tr>
-          <tr><td>Backend</td><td>Node.js + Express</td></tr>
-          <tr><td>Database</td><td>SQLite via Prisma — not yet built</td></tr>
-          <tr><td>Auth</td><td>bcrypt + JWT — not yet built</td></tr>
-          <tr><td>Third-party API</td><td>Anthropic Claude, forced tool-use for structured JSON</td></tr>
+          <tr><td>Frontend</td><td>React (Vite), plain CSS — no router yet, single view</td></tr>
+          <tr><td>Backend</td><td>Node.js + Express (<code>app.js</code> separate from <code>server.js</code> for testability)</td></tr>
+          <tr><td>Database</td><td>SQLite via Prisma — <code>User</code>, <code>FeatureRequest</code>, <code>Stream</code></td></tr>
+          <tr><td>Auth</td><td>bcryptjs + JWT (7-day expiry)</td></tr>
+          <tr><td>Third-party API</td><td>Anthropic Claude — forced tool-use, plus <code>messages.stream()</code> for Module 12</td></tr>
           <tr><td>Diffing</td><td><code>diff</code> npm package → unified diffs</td></tr>
+          <tr><td>Testing</td><td>Vitest + supertest (backend, 21 tests) · Vitest + RTL (frontend, 2 tests)</td></tr>
+          <tr><td>Deployment</td><td>Render Blueprint prepared (<code>featureforge/render.yaml</code>) — not yet applied</td></tr>
         </tbody>
       </table>
     </div>
