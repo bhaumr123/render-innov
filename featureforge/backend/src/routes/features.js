@@ -1,13 +1,16 @@
 import express from "express";
-import { planFeature } from "../lib/claudeClient.js";
+import { planFeature, planFeatureStream } from "../lib/claudeClient.js";
 import { unifiedDiff } from "../lib/diffUtil.js";
 import { requireAuth } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
 import {
-  STREAMS,
   isValidStream,
+  listAllStreams,
+  registerCustomStream,
+  InvalidStreamError,
   buildContext,
   buildReferenceContext,
+  getStreamPromptSource,
   looksLikeDuplicatedRoot,
   readFile,
   writeFile,
@@ -22,14 +25,33 @@ export const featuresRouter = express.Router();
 featuresRouter.use(requireAuth);
 
 // GET /api/features/streams — lets a client (or you, via curl) discover
-// what streams exist without hardcoding them on the frontend.
+// what streams exist without hardcoding them on the frontend. Includes
+// both built-in streams and anything registered at runtime.
 featuresRouter.get("/streams", (req, res) => {
-  const streams = Object.entries(STREAMS).map(([id, s]) => ({
-    id,
-    label: s.label,
-    description: s.description,
-  }));
-  res.json({ streams });
+  res.json({ streams: listAllStreams() });
+});
+
+// POST /api/features/streams  { slug, label, description, systemPrompt }
+// Module 12: registers a brand-new target project beyond the two built-in
+// streams — its own directory under featureforge/custom/, usable
+// immediately at /api/features/:slug/plan and /apply.
+featuresRouter.post("/streams", async (req, res) => {
+  const { slug, label, description, systemPrompt } = req.body || {};
+  try {
+    const stream = await registerCustomStream({
+      slug,
+      label,
+      description,
+      systemPrompt,
+      userId: req.user.id,
+    });
+    res.status(201).json({ stream });
+  } catch (err) {
+    if (err instanceof InvalidStreamError) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/features/history — every plan this user has ever made, most
@@ -58,10 +80,81 @@ function requireValidStream(req, res, next) {
   const { stream } = req.params;
   if (!isValidStream(stream)) {
     return res.status(404).json({
-      error: `Unknown stream "${stream}". Valid streams: ${Object.keys(STREAMS).join(", ")}`,
+      error: `Unknown stream "${stream}". GET /api/features/streams lists the valid ones.`,
     });
   }
   next();
+}
+
+// Shared by the plain and streaming /plan endpoints below — everything
+// except *how the response is delivered* is identical: ask Claude, guard
+// against a couple of real failure modes we've hit live, compute diffs,
+// save the plan. onDelta, if given, gets each raw JSON fragment as
+// Claude's tool-call input streams in (see planFeatureStream's own
+// comment for why those fragments aren't parseable on their own).
+async function runPlan(stream, description, userId, { onDelta } = {}) {
+  const context = buildContext(stream);
+  const referenceContext = buildReferenceContext(stream);
+  const promptSource = getStreamPromptSource(stream);
+
+  const plan = onDelta
+    ? await planFeatureStream(promptSource, description, context, referenceContext, onDelta)
+    : await planFeature(promptSource, description, context, referenceContext);
+
+  // Our tool schema marks `summary` required, but forced tool-use only
+  // guarantees Claude's reply matches the schema's *shape* — it doesn't
+  // guarantee every required field is actually filled in. Seen this
+  // happen live: a real response came back with `files` populated and no
+  // `summary` at all. Never trust an LLM's structured output as fully as
+  // you'd trust a type system; validate/default the way you would for any
+  // other untrusted input.
+  const summary = plan.summary || "(Claude didn't provide a summary for this plan.)";
+
+  const badPaths = (plan.files || [])
+    .map((f) => f.path)
+    .filter((p) => looksLikeDuplicatedRoot(stream, p));
+  if (badPaths.length) {
+    const err = new Error(
+      `Claude prefixed ${badPaths.length} path(s) with the "${stream}" stream's own ` +
+        `root directory name (e.g. "${badPaths[0]}") — that would double-nest on ` +
+        "apply. Rejecting this plan; try /plan again."
+    );
+    err.status = 502;
+    throw err;
+  }
+
+  const files = (plan.files || []).map((f) => {
+    const before = readFile(stream, f.path);
+    const after = f.action === "delete" ? "" : f.content ?? "";
+    return {
+      path: f.path,
+      action: f.action,
+      explanation: f.explanation,
+      diff: unifiedDiff(f.path, before, after),
+      content: after, // kept in the DB row so /apply doesn't need Claude again
+    };
+  });
+
+  const saved = await prisma.featureRequest.create({
+    data: {
+      userId,
+      stream,
+      description,
+      summary,
+      filesJson: JSON.stringify(files),
+      status: "planned",
+    },
+  });
+
+  // Don't send raw `content` back to the client for the review step — the
+  // diff already shows the change; sending full content too just bloats
+  // the response. It stays in the DB row until /apply asks for it.
+  return {
+    planId: saved.id,
+    stream,
+    summary,
+    files: files.map(({ content, ...rest }) => rest),
+  };
 }
 
 // POST /api/features/:stream/plan  { description: string }
@@ -76,65 +169,40 @@ featuresRouter.post("/:stream/plan", requireValidStream, async (req, res) => {
   }
 
   try {
-    const context = buildContext(stream);
-    const referenceContext = buildReferenceContext(stream);
-    const plan = await planFeature(stream, description, context, referenceContext);
-
-    // Our tool schema marks `summary` required, but forced tool-use only
-    // guarantees Claude's reply matches the schema's *shape* — it doesn't
-    // guarantee every required field is actually filled in. Seen this
-    // happen live: a real response came back with `files` populated and
-    // no `summary` at all. Never trust an LLM's structured output as fully
-    // as you'd trust a type system; validate/default the way you would
-    // for any other untrusted input.
-    const summary = plan.summary || "(Claude didn't provide a summary for this plan.)";
-
-    const badPaths = (plan.files || [])
-      .map((f) => f.path)
-      .filter((p) => looksLikeDuplicatedRoot(stream, p));
-    if (badPaths.length) {
-      return res.status(502).json({
-        error:
-          `Claude prefixed ${badPaths.length} path(s) with the "${stream}" ` +
-          `stream's own root directory name (e.g. "${badPaths[0]}") — that ` +
-          "would double-nest on apply. Rejecting this plan; try /plan again.",
-      });
-    }
-
-    const files = (plan.files || []).map((f) => {
-      const before = readFile(stream, f.path);
-      const after = f.action === "delete" ? "" : f.content ?? "";
-      return {
-        path: f.path,
-        action: f.action,
-        explanation: f.explanation,
-        diff: unifiedDiff(f.path, before, after),
-        content: after, // kept in the DB row so /apply doesn't need Claude again
-      };
-    });
-
-    const saved = await prisma.featureRequest.create({
-      data: {
-        userId: req.user.id,
-        stream,
-        description,
-        summary,
-        filesJson: JSON.stringify(files),
-        status: "planned",
-      },
-    });
-
-    // Don't send raw `content` back to the client for the review step —
-    // the diff already shows the change; sending full content too just
-    // bloats the response. It stays in the DB row until /apply asks for it.
-    res.json({
-      planId: saved.id,
-      stream,
-      summary,
-      files: files.map(({ content, ...rest }) => rest),
-    });
+    const result = await runPlan(stream, description, req.user.id);
+    res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// POST /api/features/:stream/plan/stream  { description: string }
+// Module 12: the same thing as /plan, but delivered as Server-Sent Events
+// so the frontend can show Claude "typing" the plan in real time instead
+// of a blank spinner. Not a native EventSource (that's GET-only) — the
+// frontend reads this with fetch()'s streaming response body instead.
+featuresRouter.post("/:stream/plan/stream", requireValidStream, async (req, res) => {
+  const { stream } = req.params;
+  const { description } = req.body || {};
+  if (!description || typeof description !== "string" || !description.trim()) {
+    return res.status(400).json({ error: "description is required" });
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  try {
+    const result = await runPlan(stream, description, req.user.id, {
+      onDelta: (text) => res.write(`event: delta\ndata: ${JSON.stringify({ text })}\n\n`),
+    });
+    res.write(`event: done\ndata: ${JSON.stringify(result)}\n\n`);
+  } catch (err) {
+    res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+  } finally {
+    res.end();
   }
 });
 

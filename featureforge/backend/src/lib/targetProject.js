@@ -4,19 +4,27 @@
 // place we'd add safety checks (e.g. refusing to write outside that root).
 //
 // A "stream" is just a named target: a directory FeatureForge is allowed to
-// modify, plus (in claudeClient.js) a system prompt tuned for what belongs
-// in it. Two streams share this exact same plan -> diff -> apply pipeline;
-// they only differ in *where* they write and *what kind* of files Claude is
-// asked to produce.
+// modify, plus a system prompt tuned for what belongs in it. Every stream
+// shares this exact same plan -> diff -> apply pipeline; they only differ
+// in *where* they write and *what kind* of files Claude is asked to
+// produce.
+//
+// Module 12: streams are no longer just the two hardcoded ones. Built-in
+// streams (fullstack, k8s) keep their hand-written system prompts in
+// claudeClient.js; custom streams are registered at runtime (POST
+// /api/streams), persisted in the Stream table, and cached here in memory
+// so every other function in this file can keep treating "look up a
+// stream" as a cheap, synchronous operation.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { prisma } from "./prisma.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // backend/src/lib -> backend/src -> backend -> featureforge -> <dir>
-function resolveRoot(dirName) {
-  return path.resolve(__dirname, "../../../", dirName);
+function resolveRoot(...segments) {
+  return path.resolve(__dirname, "../../../", ...segments);
 }
 
 export const STREAMS = {
@@ -39,9 +47,107 @@ export const STREAMS = {
   },
 };
 
-export function isValidStream(streamId) {
-  return Object.prototype.hasOwnProperty.call(STREAMS, streamId);
+const CUSTOM_STREAMS_ROOT = resolveRoot("custom");
+const SLUG_PATTERN = /^[a-z][a-z0-9-]{1,40}$/;
+
+// In-memory cache of custom streams, keyed by slug. Populated once at
+// startup (loadCustomStreams) and updated on every successful
+// registerCustomStream call. This only works correctly for a single
+// server process — the same honest limitation every in-memory cache has,
+// worth knowing before this ever ran as more than one instance.
+const customStreams = new Map();
+
+export async function loadCustomStreams() {
+  const rows = await prisma.stream.findMany();
+  customStreams.clear();
+  for (const row of rows) {
+    customStreams.set(row.slug, {
+      label: row.label,
+      description: row.description,
+      systemPrompt: row.systemPrompt,
+      root: resolveRoot("custom", row.slug),
+      referenceStreams: [],
+      custom: true,
+    });
+  }
 }
+
+export function isValidStream(streamId) {
+  return Object.prototype.hasOwnProperty.call(STREAMS, streamId) || customStreams.has(streamId);
+}
+
+function getStreamConfig(streamId) {
+  return STREAMS[streamId] || customStreams.get(streamId);
+}
+
+export function listAllStreams() {
+  const builtin = Object.entries(STREAMS).map(([id, s]) => ({
+    id,
+    label: s.label,
+    description: s.description,
+    custom: false,
+  }));
+  const custom = Array.from(customStreams.entries()).map(([id, s]) => ({
+    id,
+    label: s.label,
+    description: s.description,
+    custom: true,
+  }));
+  return [...builtin, ...custom];
+}
+
+// Registers a new target project: validates the slug, persists it, creates
+// its directory with a starter README (same convention as tripcraft-app/
+// and k8s-deploy/), and adds it to the in-memory cache so it's usable
+// immediately — no restart required.
+export async function registerCustomStream({ slug, label, description, systemPrompt, userId }) {
+  if (typeof slug !== "string" || !SLUG_PATTERN.test(slug)) {
+    throw new InvalidStreamError(
+      "slug must be lowercase letters, digits, and hyphens, starting with a letter (2-41 characters)."
+    );
+  }
+  if (isValidStream(slug)) {
+    throw new InvalidStreamError(`"${slug}" is already a stream (built-in or registered).`);
+  }
+  for (const [field, value] of [
+    ["label", label],
+    ["description", description],
+    ["systemPrompt", systemPrompt],
+  ]) {
+    if (typeof value !== "string" || !value.trim()) {
+      throw new InvalidStreamError(`${field} is required.`);
+    }
+  }
+
+  await prisma.stream.create({
+    data: { slug, label, description, systemPrompt, userId },
+  });
+
+  const root = resolveRoot("custom", slug);
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "README.md"),
+    `# ${slug}\n\nThis directory is intentionally empty (aside from this file).\n\n` +
+      `It's the **output** of FeatureForge's "${label}" stream, registered at runtime ` +
+      `rather than built in. Every file that appears here comes from describing a ` +
+      `feature to \`POST /api/features/${slug}/plan\`, reviewing the diff, then ` +
+      `\`POST /api/features/${slug}/apply\`.\n`,
+    "utf8"
+  );
+
+  customStreams.set(slug, {
+    label,
+    description,
+    systemPrompt,
+    root,
+    referenceStreams: [],
+    custom: true,
+  });
+
+  return { id: slug, label, description, custom: true };
+}
+
+export class InvalidStreamError extends Error {}
 
 const IGNORED = new Set(["node_modules", ".git", "dist", "build"]);
 
@@ -65,7 +171,7 @@ function walk(dir, base = dir, out = []) {
 // it, but a prompt fix isn't a guarantee; this is the backstop that turns
 // a repeat into a loud, specific error instead of a silently wrong path.
 export function looksLikeDuplicatedRoot(streamId, relPath) {
-  const rootName = path.basename(STREAMS[streamId].root);
+  const rootName = path.basename(getStreamConfig(streamId).root);
   const firstSegment = relPath.split("/")[0];
   return firstSegment === rootName;
 }
@@ -73,10 +179,10 @@ export function looksLikeDuplicatedRoot(streamId, relPath) {
 // Refuse to touch anything outside the stream's own root, even if a caller
 // passes a relative path with ".." in it. This is the one
 // security-sensitive spot in the whole tool, since Claude's output ends up
-// here — and it's also what keeps the two streams from ever writing into
-// each other's directory by mistake.
+// here — and it's also what keeps every stream (built-in or custom) from
+// ever writing into another one's directory by mistake.
 function resolveSafe(streamId, relPath) {
-  const root = STREAMS[streamId].root;
+  const root = getStreamConfig(streamId).root;
   const resolved = path.resolve(root, relPath);
   if (!resolved.startsWith(root + path.sep) && resolved !== root) {
     throw new Error(
@@ -87,7 +193,7 @@ function resolveSafe(streamId, relPath) {
 }
 
 export function listFiles(streamId) {
-  const root = STREAMS[streamId].root;
+  const root = getStreamConfig(streamId).root;
   if (!fs.existsSync(root)) return [];
   return walk(root).sort();
 }
@@ -126,12 +232,23 @@ export function buildContext(streamId) {
 // stream reading what fullstack actually built, so a Deployment's CMD and
 // probe paths match the real app instead of a guess. Building this reuses
 // buildContext() itself; nothing here can write anywhere, it just labels
-// the result by which stream it came from.
+// the result by which stream it came from. Custom streams don't declare
+// reference streams yet (there's no UI for it) — always an empty object.
 export function buildReferenceContext(streamId) {
-  const refs = STREAMS[streamId].referenceStreams || [];
+  const refs = getStreamConfig(streamId).referenceStreams || [];
   const context = {};
   for (const refId of refs) {
     context[refId] = buildContext(refId);
   }
   return context;
+}
+
+// Only the built-in streams have a hand-written prompt baked into
+// claudeClient.js; a custom stream's "domain instructions" are whatever
+// the person who registered it wrote in systemPrompt.
+export function getStreamPromptSource(streamId) {
+  const cfg = getStreamConfig(streamId);
+  return cfg.custom
+    ? { kind: "custom", label: cfg.label, instructions: cfg.systemPrompt }
+    : { kind: "builtin", streamId };
 }

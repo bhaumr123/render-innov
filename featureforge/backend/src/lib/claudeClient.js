@@ -120,8 +120,26 @@ const STREAM_PROMPTS = {
   ].join("\n"),
 };
 
-function buildSystemPrompt(streamId) {
-  return STREAM_PROMPTS[streamId];
+// promptSource comes from targetProject.js's getStreamPromptSource():
+// { kind: "builtin", streamId } for fullstack/k8s, or
+// { kind: "custom", label, instructions } for a runtime-registered stream.
+// Custom streams don't get a hand-written prompt — they get whoever
+// registered them's own description of what belongs there, wrapped in the
+// same COMMON_RULES every stream follows regardless of its content.
+function buildSystemPrompt(promptSource) {
+  if (promptSource.kind === "builtin") {
+    return STREAM_PROMPTS[promptSource.streamId];
+  }
+  return [
+    "You are the code-generation engine inside FeatureForge, working on a",
+    `custom stream: "${promptSource.label}".`,
+    "",
+    "What belongs in this stream, in its own words:",
+    promptSource.instructions,
+    "",
+    "Rules:",
+    ...COMMON_RULES,
+  ].join("\n");
 }
 
 function describeContext(label, tree, files) {
@@ -155,12 +173,12 @@ function buildUserMessage(description, tree, files, referenceContext) {
   return sections.join("\n");
 }
 
-export async function planFeature(streamId, description, { tree, files }, referenceContext) {
+export async function planFeature(promptSource, description, { tree, files }, referenceContext) {
   const client = getClient();
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 8000,
-    system: buildSystemPrompt(streamId),
+    system: buildSystemPrompt(promptSource),
     tools: [CHANGE_TOOL],
     tool_choice: { type: "tool", name: "write_code_changes" },
     messages: [
@@ -172,6 +190,50 @@ export async function planFeature(streamId, description, { tree, files }, refere
   });
 
   const toolUse = response.content.find((block) => block.type === "tool_use");
+  if (!toolUse) {
+    throw new Error("Claude did not return a structured plan.");
+  }
+  return toolUse.input;
+}
+
+// Module 12: the streaming twin of planFeature. Same request, same forced
+// tool-use — the only difference is *how* the response arrives. Claude
+// streams the tool call's input as a sequence of raw JSON text fragments
+// (an `input_json_delta` per chunk); onDelta gets each fragment as it
+// arrives, so a caller can show "Claude is writing..." instead of a blank
+// spinner. The fragments are NOT valid JSON individually — only once
+// they're all concatenated — so onDelta is for display only; the actual
+// parsed result still comes back at the end, exactly like planFeature.
+export async function planFeatureStream(
+  promptSource,
+  description,
+  { tree, files },
+  referenceContext,
+  onDelta
+) {
+  const client = getClient();
+  const stream = client.messages.stream({
+    model: MODEL,
+    max_tokens: 8000,
+    system: buildSystemPrompt(promptSource),
+    tools: [CHANGE_TOOL],
+    tool_choice: { type: "tool", name: "write_code_changes" },
+    messages: [
+      {
+        role: "user",
+        content: buildUserMessage(description, tree, files, referenceContext),
+      },
+    ],
+  });
+
+  stream.on("streamEvent", (event) => {
+    if (event.type === "content_block_delta" && event.delta?.type === "input_json_delta") {
+      onDelta(event.delta.partial_json);
+    }
+  });
+
+  const finalMessage = await stream.finalMessage();
+  const toolUse = finalMessage.content.find((block) => block.type === "tool_use");
   if (!toolUse) {
     throw new Error("Claude did not return a structured plan.");
   }

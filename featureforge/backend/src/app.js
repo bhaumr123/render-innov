@@ -7,8 +7,16 @@ import cors from "cors";
 import express from "express";
 import { authRouter } from "./routes/auth.js";
 import { featuresRouter } from "./routes/features.js";
+import { loadCustomStreams } from "./lib/targetProject.js";
 
 export const app = express();
+
+// Module 12: any streams registered before this process started need to
+// be loaded into the in-memory cache before the app can serve requests
+// for them. Top-level await here means importing this module doesn't
+// resolve until that's done — both server.js and any test file that
+// dynamically imports this module wait for it automatically.
+await loadCustomStreams();
 
 // The frontend (Module 6/7) runs on a different port (Vite's dev server),
 // which makes it a different "origin" as far as the browser is concerned —

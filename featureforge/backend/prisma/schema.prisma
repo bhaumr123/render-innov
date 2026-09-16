@@ -1,8 +1,12 @@
-// Module 4: the data model. Two tables, one relationship.
+// Module 4: the data model. Module 12 adds Stream — a user-registered
+// target project, generalizing beyond the two hardcoded streams
+// (fullstack/k8s) that used to be the only valid values of
+// FeatureRequest.stream.
 //
 // A User owns many FeatureRequests (one-to-many) — every plan you ask for,
 // and whether it was ever applied, is now remembered instead of living
-// only in server memory until the next restart.
+// only in server memory until the next restart. A User can also own many
+// Streams — the target projects they've registered beyond the built-in two.
 generator client {
   provider = "prisma-client-js"
 }
@@ -20,6 +24,7 @@ model User {
   passwordHash    String
   createdAt       DateTime         @default(now())
   featureRequests FeatureRequest[]
+  streams         Stream[]
 }
 
 model FeatureRequest {
@@ -39,4 +44,21 @@ model FeatureRequest {
   appliedAt   DateTime?
 
   @@index([userId])
+}
+
+model Stream {
+  id           String   @id @default(uuid())
+  // The URL-safe identifier used as :stream in the API, e.g. "docs-site".
+  // Also doubles as the directory name under featureforge/custom/, so it's
+  // validated (lowercase, digits, hyphens only) before this row is created.
+  slug         String   @unique
+  label        String
+  description  String
+  // What Claude is told belongs here — there's no way to infer this
+  // automatically the way the built-in streams' hand-written prompts do,
+  // so registering a custom stream means writing this yourself.
+  systemPrompt String
+  createdBy    User     @relation(fields: [userId], references: [id])
+  userId       String
+  createdAt    DateTime @default(now())
 }
