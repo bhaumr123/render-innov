@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { apiFetch, getToken, clearToken } from "./api.js";
+import { apiFetch, apiFetchStream, getToken, clearToken } from "./api.js";
 import Auth from "./Auth.jsx";
 import DiffView from "./DiffView.jsx";
+import NewStreamForm from "./NewStreamForm.jsx";
 
 function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   const [streams, setStreams] = useState([]);
@@ -12,6 +13,8 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   const [history, setHistory] = useState([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [loading, setLoading] = useState(null); // "plan" | "apply" | null
+  const [streamingText, setStreamingText] = useState("");
+  const [showNewStream, setShowNewStream] = useState(false);
   const [error, setError] = useState(null);
 
   // A 401 here means the token expired or was revoked mid-session (it was
@@ -23,6 +26,17 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
     } else {
       setError(err.message);
     }
+  }
+
+  function loadStreams() {
+    return apiFetch("/api/features/streams")
+      .then((data) => {
+        setStreams(data.streams || []);
+        if (data.streams?.length && !data.streams.some((s) => s.id === stream)) {
+          setStream(data.streams[0].id);
+        }
+      })
+      .catch(handleApiError);
   }
 
   function loadHistory() {
@@ -41,32 +55,37 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
   // ([]) means "only run this once, right after the first render" — the
   // standard pattern for "fetch something when the page loads."
   useEffect(() => {
-    apiFetch("/api/features/streams")
-      .then((data) => {
-        setStreams(data.streams || []);
-        if (data.streams?.length) setStream(data.streams[0].id);
-      })
-      .catch(handleApiError);
+    loadStreams();
     loadHistory();
   }, []);
 
+  // Module 12: streamed instead of a single await — Claude's raw JSON
+  // fragments update streamingText as they arrive (see api.js's
+  // apiFetchStream for why they're only display text, not parseable on
+  // their own), and the final "done" event carries the exact same shape
+  // the non-streaming /plan endpoint used to return directly.
   async function handlePlan(e) {
     e.preventDefault();
     setLoading("plan");
     setError(null);
     setPlan(null);
     setApplied(null);
+    setStreamingText("");
     try {
-      const data = await apiFetch(`/api/features/${stream}/plan`, {
-        method: "POST",
+      await apiFetchStream(`/api/features/${stream}/plan/stream`, {
         body: JSON.stringify({ description }),
+        onDelta: (text) => setStreamingText((prev) => prev + text),
+        onDone: (data) => {
+          setPlan(data);
+          loadHistory();
+        },
+        onError: (err) => setError(err.message),
       });
-      setPlan(data);
-      loadHistory();
     } catch (err) {
       handleApiError(err);
     } finally {
       setLoading(null);
+      setStreamingText("");
     }
   }
 
@@ -86,6 +105,8 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
       setLoading(null);
     }
   }
+
+  const currentStreamLabel = streams.find((s) => s.id === stream)?.label || stream;
 
   return (
     <div className="page">
@@ -111,6 +132,7 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
             {streams.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.label}
+                {s.custom ? " (custom)" : ""}
               </option>
             ))}
           </select>
@@ -127,10 +149,32 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
           />
         </label>
 
-        <button type="submit" disabled={loading === "plan" || !stream}>
-          {loading === "plan" ? "Asking Claude…" : "Plan this feature"}
-        </button>
+        <div className="form-actions">
+          <button type="submit" disabled={loading === "plan" || !stream}>
+            {loading === "plan" ? "Asking Claude…" : "Plan this feature"}
+          </button>
+          <button type="button" className="link-btn" onClick={() => setShowNewStream((v) => !v)}>
+            {showNewStream ? "Cancel" : "+ New target project"}
+          </button>
+        </div>
       </form>
+
+      {showNewStream && (
+        <NewStreamForm
+          onCreated={(newStream) => {
+            setShowNewStream(false);
+            loadStreams().then(() => setStream(newStream.id));
+          }}
+          onError={handleApiError}
+        />
+      )}
+
+      {loading === "plan" && (
+        <div className="streaming-preview">
+          <p className="streaming-label">Claude is writing the plan…</p>
+          <pre>{streamingText || "…"}</pre>
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
 
@@ -156,8 +200,8 @@ function FeatureForgeApp({ user, onLogOut, onSessionExpired }) {
             </button>
           ) : (
             <p className="applied-note">
-              Applied {applied.applied.length} file{applied.applied.length === 1 ? "" : "s"} to{" "}
-              <code>{stream === "k8s" ? "k8s-deploy/" : "tripcraft-app/"}</code>.
+              Applied {applied.applied.length} file{applied.applied.length === 1 ? "" : "s"} to the{" "}
+              <strong>{currentStreamLabel}</strong> stream's directory.
             </p>
           )}
         </section>

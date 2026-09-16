@@ -38,3 +38,51 @@ export async function apiFetch(path, options = {}) {
   }
   return data;
 }
+
+// Module 12: reads a Server-Sent-Events response body as it arrives.
+// Deliberately not the browser's built-in EventSource — that API only
+// supports GET requests, and this needs to POST a body (and an auth
+// header). fetch()'s streaming response body plus a hand-rolled SSE
+// parser does the same job for a POST.
+export async function apiFetchStream(path, { body, onDelta, onDone, onError }) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}));
+    const err = new Error(data.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE events are separated by a blank line; each event is
+    // "event: <name>\ndata: <json>".
+    let boundary;
+    while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+      const rawEvent = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+
+      const eventLine = rawEvent.split("\n").find((l) => l.startsWith("event:"));
+      const dataLine = rawEvent.split("\n").find((l) => l.startsWith("data:"));
+      if (!eventLine || !dataLine) continue;
+
+      const eventName = eventLine.slice("event:".length).trim();
+      const data = JSON.parse(dataLine.slice("data:".length).trim());
+
+      if (eventName === "delta") onDelta?.(data.text);
+      else if (eventName === "done") onDone?.(data);
+      else if (eventName === "error") onError?.(new Error(data.error));
+    }
+  }
+}
