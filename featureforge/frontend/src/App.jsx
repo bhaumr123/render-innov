@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
-
-// The backend runs on a different port than this dev server (4000 vs
-// 5173) — that's why server.js needed the cors() middleware.
-const API_BASE = "http://localhost:4000";
+import { apiFetch, getToken, clearToken } from "./api.js";
+import Auth from "./Auth.jsx";
 
 // Turns a unified diff string into colored lines. This is deliberately
 // simple: a line starting with "+" is an addition, "-" a removal, anything
@@ -26,26 +24,33 @@ function DiffView({ diff }) {
   );
 }
 
-export default function App() {
+function FeatureForgeApp({ user, onLogOut }) {
   const [streams, setStreams] = useState([]);
   const [stream, setStream] = useState("");
   const [description, setDescription] = useState("");
   const [plan, setPlan] = useState(null);
   const [applied, setApplied] = useState(null);
+  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(null); // "plan" | "apply" | null
   const [error, setError] = useState(null);
+
+  function loadHistory() {
+    apiFetch("/api/features/history")
+      .then((data) => setHistory(data.requests || []))
+      .catch(() => {}); // the history panel is a nice-to-have, not worth an error banner
+  }
 
   // useEffect runs after the component renders. An empty dependency array
   // ([]) means "only run this once, right after the first render" — the
   // standard pattern for "fetch something when the page loads."
   useEffect(() => {
-    fetch(`${API_BASE}/api/features/streams`)
-      .then((r) => r.json())
+    apiFetch("/api/features/streams")
       .then((data) => {
         setStreams(data.streams || []);
         if (data.streams?.length) setStream(data.streams[0].id);
       })
       .catch(() => setError("Can't reach the backend. Is `npm run dev` running in featureforge/backend?"));
+    loadHistory();
   }, []);
 
   async function handlePlan(e) {
@@ -55,14 +60,12 @@ export default function App() {
     setPlan(null);
     setApplied(null);
     try {
-      const res = await fetch(`${API_BASE}/api/features/${stream}/plan`, {
+      const data = await apiFetch(`/api/features/${stream}/plan`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Something went wrong");
       setPlan(data);
+      loadHistory();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -74,14 +77,12 @@ export default function App() {
     setLoading("apply");
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/features/${stream}/apply`, {
+      const data = await apiFetch(`/api/features/${stream}/apply`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId: plan.planId }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Something went wrong");
       setApplied(data);
+      loadHistory();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -92,8 +93,18 @@ export default function App() {
   return (
     <div className="page">
       <header>
-        <h1>FeatureForge</h1>
-        <p>Describe a feature. Review the diff. Apply it for real.</p>
+        <div className="header-row">
+          <div>
+            <h1>FeatureForge</h1>
+            <p>Describe a feature. Review the diff. Apply it for real.</p>
+          </div>
+          <div className="account">
+            <span>{user.email}</span>
+            <button type="button" className="link-btn" onClick={onLogOut}>
+              Log out
+            </button>
+          </div>
+        </div>
       </header>
 
       <form onSubmit={handlePlan} className="request-form">
@@ -154,6 +165,55 @@ export default function App() {
           )}
         </section>
       )}
+
+      {history.length > 0 && (
+        <section className="history">
+          <h2>Your history</h2>
+          <ul className="history-list">
+            {history.map((h) => (
+              <li key={h.id} className="history-item">
+                <span className={`badge badge-${h.status === "applied" ? "create" : "modify"}`}>
+                  {h.status}
+                </span>
+                <span className="history-desc">{h.description}</span>
+                <span className="history-meta">
+                  {h.stream} · {h.fileCount} file{h.fileCount === 1 ? "" : "s"} ·{" "}
+                  {new Date(h.createdAt).toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
+  );
+}
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [checkedStorage, setCheckedStorage] = useState(false);
+
+  // We only ever stored a token, not the user — on reload, treat "a token
+  // exists" as "probably still logged in" and let the first API call prove
+  // it. If the token's expired, that call 401s and we fall back to login.
+  useEffect(() => {
+    if (getToken()) setUser({ email: "…" });
+    setCheckedStorage(true);
+  }, []);
+
+  if (!checkedStorage) return null;
+
+  if (!user) {
+    return <Auth onAuthed={setUser} />;
+  }
+
+  return (
+    <FeatureForgeApp
+      user={user}
+      onLogOut={() => {
+        clearToken();
+        setUser(null);
+      }}
+    />
   );
 }

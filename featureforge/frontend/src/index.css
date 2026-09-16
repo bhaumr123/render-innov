@@ -30,6 +30,50 @@ body {
 header h1 { margin: 0 0 4px; font-size: 26px; }
 header p { margin: 0 0 28px; color: var(--muted); }
 
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  padding-top: 4px;
+}
+.link-btn {
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.auth-tabs { display: flex; gap: 6px; margin-bottom: 4px; }
+.tab {
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 6px 14px;
+  font-size: 13px;
+}
+.tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.request-form input {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.hint { font-weight: 400; font-size: 11.5px; color: var(--muted); }
+
 .request-form {
   display: flex;
   flex-direction: column;
@@ -135,3 +179,20 @@ button:disabled { opacity: 0.55; cursor: default; }
   color: var(--add);
   font-size: 13.5px;
 }
+
+.history { margin-top: 8px; }
+.history h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); }
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+.history-desc { flex: 1; min-width: 160px; }
+.history-meta { color: var(--muted); }
