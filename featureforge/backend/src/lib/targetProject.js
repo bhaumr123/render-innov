@@ -45,6 +45,14 @@ export const STREAMS = {
     root: resolveRoot("k8s-deploy"),
     referenceStreams: ["fullstack"],
   },
+  mobile: {
+    label: "Mobile app (Android)",
+    description: "A native Android/Kotlin client for TripCraft.",
+    root: resolveRoot("tripcraft-app", "mobile"),
+    // Same reason k8s reads fullstack: an Android client calling the real
+    // backend needs to match its actual routes, not guess them.
+    referenceStreams: ["fullstack"],
+  },
 };
 
 const CUSTOM_STREAMS_ROOT = resolveRoot("custom");

@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">TripCraft</string>
+    <string name="check_health_button">Check health</string>
+    <string name="status_checking">Checking backend health…</string>
+    <string name="status_result">Status: %1$s\nUptime: %2$s s\nChecked at: %3$s</string>
+    <string name="status_error">Failed to reach backend: %1$s</string>
+</resources>
