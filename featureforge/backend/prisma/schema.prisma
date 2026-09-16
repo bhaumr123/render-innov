@@ -9,7 +9,9 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  // Read from the environment (not hardcoded) so the test suite can point
+  // this at its own throwaway database instead of the real dev.db.
+  url      = env("DATABASE_URL")
 }
 
 model User {

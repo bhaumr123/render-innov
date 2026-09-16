@@ -8,4 +8,11 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: { port: 5173 },
+  // Module 10: `environment: "jsdom"` is what lets tests render React
+  // components in Node at all — jsdom is a fake browser DOM implementation.
+  // Without it, `document` and friends simply wouldn't exist.
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test-setup.js"],
+  },
 });
