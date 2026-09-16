@@ -64,7 +64,11 @@ function getFiles(hash) {
 }
 
 function parseSubject(subject) {
-  const match = subject.match(/^(\w+)(\(([\w-]+)\))?:\s*(.+)$/);
+  // Allow commas in the scope (e.g. "feat(db,auth): ..."). Found this the
+  // hard way: three real commits with a multi-word scope all silently fell
+  // through to "misc" before this fixed it, because the scope character
+  // class didn't include ",".
+  const match = subject.match(/^(\w+)(\(([\w,-]+)\))?:\s*(.+)$/);
   if (!match) return { type: "other", scope: "misc", summary: subject };
   const [, type, , scope, summary] = match;
   return { type, scope: scope || "misc", summary };
