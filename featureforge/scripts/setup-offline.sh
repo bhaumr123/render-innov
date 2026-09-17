@@ -111,6 +111,10 @@ else
 fi
 
 echo
+echo "== Applying database migrations =="
+(cd "$BACKEND_DIR" && npx prisma migrate deploy)
+
+echo
 echo "== Testing a real offline plan =="
 (cd "$BACKEND_DIR" && npm run test:offline-plan)
 
