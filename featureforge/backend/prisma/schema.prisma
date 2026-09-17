@@ -1,0 +1,93 @@
+// Module 4: the data model. Module 12 adds Stream — a user-registered
+// target project, generalizing beyond the two hardcoded streams
+// (fullstack/k8s) that used to be the only valid values of
+// FeatureRequest.stream.
+//
+// A User owns many FeatureRequests (one-to-many) — every plan you ask for,
+// and whether it was ever applied, is now remembered instead of living
+// only in server memory until the next restart. A User can also own many
+// Streams — the target projects they've registered beyond the built-in two.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  // Read from the environment (not hardcoded) so the test suite can point
+  // this at its own throwaway database instead of the real dev.db.
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  passwordHash    String
+  createdAt       DateTime         @default(now())
+  featureRequests FeatureRequest[]
+  streams         Stream[]
+}
+
+model FeatureRequest {
+  id          String    @id @default(uuid())
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+  stream      String
+  description String
+  summary     String
+  // The plan's files (path, action, explanation, diff, content) as JSON.
+  // SQLite has no native JSON column type, so this is stored as text and
+  // parsed back out in code — a normal, honest tradeoff for a field that's
+  // always read/written as a whole, never queried column-by-column.
+  filesJson   String
+  status      String    @default("planned") // "planned" | "applied"
+  createdAt   DateTime  @default(now())
+  appliedAt   DateTime?
+
+  @@index([userId])
+}
+
+model Stream {
+  id           String   @id @default(uuid())
+  // The URL-safe identifier used as :stream in the API, e.g. "docs-site".
+  // Also doubles as the directory name under featureforge/custom/, so it's
+  // validated (lowercase, digits, hyphens only) before this row is created.
+  slug         String   @unique
+  label        String
+  description  String
+  // What Claude is told belongs here — there's no way to infer this
+  // automatically the way the built-in streams' hand-written prompts do,
+  // so registering a custom stream means writing this yourself.
+  systemPrompt String
+  createdBy    User     @relation(fields: [userId], references: [id])
+  userId       String
+  createdAt    DateTime @default(now())
+}
+
+// The self-improvement loop's memory: a real bug this project actually hit,
+// not a hypothetical. Seeded with the ones found earlier this session;
+// routes/features.js also logs a new row automatically whenever an
+// unexpected server error happens, so this keeps growing on its own.
+model KnownIssue {
+  id            String   @id @default(uuid())
+  title         String
+  description   String
+  area          String // e.g. "features-api", "streams", "frontend"
+  status        String   @default("open") // "open" | "reviewed"
+  discoveredAt  DateTime @default(now())
+  reviewedInRun String? // ImprovementRun.id, once reviewed
+}
+
+// One periodic (or manually triggered) run of the self-improvement graph:
+// which issues it looked at, what it proposed, and whether it succeeded.
+// This is the audit trail — "periodically improve" means nothing if you
+// can't see what actually happened on each pass.
+model ImprovementRun {
+  id              String    @id @default(uuid())
+  ranAt           DateTime  @default(now())
+  trigger         String // "scheduled" | "manual"
+  issueIds        String // JSON array of KnownIssue ids reviewed this run
+  status          String // "proposed" | "no_action" | "error"
+  proposalSummary String? // what the agent decided to do, in its own words
+  featureRequestId String? // set if a real plan was created from the proposal
+  errorMessage    String?
+}

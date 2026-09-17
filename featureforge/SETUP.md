@@ -1,0 +1,144 @@
+# Running FeatureForge on your own machine
+
+Everything we've built so far lives in this repo on branch
+`claude/elegant-galileo-gpaeyl`. This session's container is temporary — it
+gets reclaimed after inactivity — so if you want a persistent place to run
+and keep developing FeatureForge, your Mac is exactly right. These are the
+steps to get the current code running there.
+
+**Shortcut:** once you've cloned the repo (step 2), you can run
+`bash featureforge/scripts/setup-mac.sh` instead of steps 3–5 — it checks
+your Node version, installs both the backend and frontend, creates `.env`
+from the template (generating a real `JWT_SECRET` for you — only the
+Anthropic key needs filling in by hand), and applies the database
+migrations. Steps 3–7 below are what that script automates, spelled out in
+case you'd rather do it by hand or something goes wrong.
+
+## 1. Prerequisites
+
+- **Node.js 18 or newer** (the Anthropic SDK requires it). Check what you
+  have:
+  ```bash
+  node --version
+  ```
+  If you don't have it, install via [nodejs.org](https://nodejs.org) or,
+  if you use Homebrew:
+  ```bash
+  brew install node
+  ```
+- **git**, already on macOS by default (`git --version` to confirm).
+
+## 2. Clone the repo and get this branch
+
+```bash
+git clone https://github.com/bhaumr123/render-innov.git
+cd render-innov
+git checkout claude/elegant-galileo-gpaeyl
+```
+
+If you already have the repo cloned somewhere, just:
+```bash
+cd render-innov
+git fetch origin claude/elegant-galileo-gpaeyl
+git checkout claude/elegant-galileo-gpaeyl
+git pull
+```
+
+## 3. Install dependencies (backend and frontend)
+
+```bash
+cd featureforge/backend && npm install
+cd ../frontend && npm install
+```
+
+## 4. Add your Anthropic API key and a JWT secret
+
+```bash
+cd ../backend
+cp .env.example .env
+```
+Open `backend/.env` in any editor. Replace the Anthropic placeholder with
+your real key from [console.anthropic.com](https://console.anthropic.com):
+```
+ANTHROPIC_API_KEY=sk-ant-your-real-key
+```
+And replace `JWT_SECRET`'s placeholder with any long random string — this
+one you don't get from anywhere, you just generate it:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+`.env` is gitignored — it will never get committed or pushed. Don't paste
+either secret into chat, a commit, or anywhere else in the repo.
+
+## 5. Set up the database
+
+```bash
+npx prisma migrate deploy
+```
+This creates `prisma/dev.db` (a local SQLite file, also gitignored) and
+applies the schema — the `User` and `FeatureRequest` tables. You only need
+to re-run this after pulling a change that adds a new migration.
+
+## 6. Run it — two terminal tabs
+
+**Tab 1 — backend:**
+```bash
+cd featureforge/backend
+npm run dev
+```
+You should see `FeatureForge backend listening on http://localhost:4000`.
+
+**Tab 2 — frontend:**
+```bash
+cd featureforge/frontend
+npm run dev
+```
+You should see Vite print `Local: http://localhost:5173/`. Open that URL
+in your browser — that's the actual app. First screen is a login/signup
+form (everything's behind auth now); create an account, then pick a
+stream, describe a feature, click **Plan this feature**, review the diff,
+click **Apply to disk**. Your past requests show up in **Your history**
+below the form.
+
+Both auto-reload on file changes, so leave them running while we work.
+
+## 7. Or test the API directly with curl
+
+Auth is required on every `/api/features/*` route now, so you need a token
+first:
+```bash
+curl -X POST http://localhost:4000/api/auth/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a-real-password"}'
+```
+That returns `{"token": "...", "user": {...}}` — copy the token and use it
+on everything else:
+```bash
+TOKEN="paste-the-token-here"
+
+curl http://localhost:4000/api/health
+
+curl http://localhost:4000/api/features/streams -H "Authorization: Bearer $TOKEN"
+
+curl -X POST http://localhost:4000/api/features/fullstack/plan \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"description":"scaffold an Express backend with a health check endpoint"}'
+```
+The last one is the same thing the "Plan this feature" button does — with
+your Anthropic key in place, it returns a JSON plan with a `summary` and a
+`files` array, each with a unified `diff`, and saves it to the database
+with status `"planned"`. Nothing gets written to `tripcraft-app/` until
+you also call `/api/features/fullstack/apply` with the `planId` it gives
+you (or click **Apply to disk** in the UI) — that flips its status to
+`"applied"`.
+
+## Staying in sync with this session
+
+While we keep working together in this chat, I'll keep committing and
+pushing to `claude/elegant-galileo-gpaeyl`. Pull before you resume local
+work:
+```bash
+git pull origin claude/elegant-galileo-gpaeyl
+```
+And if you make local changes you want kept, commit and push them the same
+way — just say so and we'll coordinate rather than diverging silently.

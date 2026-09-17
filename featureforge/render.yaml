@@ -1,0 +1,57 @@
+# -------------------------------------------------------------------
+# Render blueprint for FeatureForge — separate from the repo's root
+# render.yaml, which deploys the actual live render-innov app. This one
+# is opt-in: applying it does not touch that deployment.
+#
+# Two services:
+#   • featureforge-backend  — Node/Express API + Prisma/SQLite
+#   • featureforge-frontend — built React SPA served as a static site
+#
+# Read featureforge/DEPLOYMENT.md before applying this — in particular
+# the note about SQLite living on Render's ephemeral disk.
+# -------------------------------------------------------------------
+services:
+  # ---------------- Backend ----------------
+  - type: web
+    name: featureforge-backend
+    runtime: node
+    plan: free
+    rootDir: featureforge/backend
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
+
+      # ---- Secrets — set the actual values in the Render dashboard ----
+      - key: ANTHROPIC_API_KEY          # console.anthropic.com → API Keys
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true             # Render generates a real random value; you never see or set it
+
+      # ---- App config ----
+      - key: DATABASE_URL
+        value: file:./dev.db            # see DEPLOYMENT.md — this resets on every redeploy without a paid persistent disk
+      - key: CORS_ORIGIN
+        value: https://featureforge-frontend.onrender.com
+
+  # ---------------- Frontend (static) ----------------
+  - type: web
+    name: featureforge-frontend
+    runtime: static
+    rootDir: featureforge/frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: VITE_API_BASE
+        value: https://featureforge-backend.onrender.com
+    routes:
+      - type: rewrite                   # SPA fallback (there's no router yet, but this is the standard pattern)
+        source: /*
+        destination: /index.html
