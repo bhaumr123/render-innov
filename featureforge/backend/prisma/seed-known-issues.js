@@ -118,6 +118,26 @@ const ISSUES = [
       "by matching an optional leading `#` and whitespace too, and verified " +
       "idempotent (re-running with a different model updates in place).",
   },
+  {
+    title: "setup-offline.sh never ran prisma migrate deploy — fresh clones had no schema at all",
+    area: "tooling",
+    description:
+      "The first real user to run scripts/setup-offline.sh on an actual " +
+      "fresh clone hit `PrismaClientKnownRequestError: The table main.Stream " +
+      "does not exist` — the script installs Ollama, pulls a model, writes " +
+      ".env, and runs `npm install`, but never runs `npx prisma migrate " +
+      "deploy`, so dev.db never gets created/migrated before " +
+      "test:offline-plan calls loadCustomStreams(), which queries the " +
+      "Stream table. setup-mac.sh (the other bootstrap script) already has " +
+      "this exact step — it was simply missed when writing the new script, " +
+      "and every sandbox test of it here ran against a dev.db that already " +
+      "had migrations applied from earlier work, so the gap never surfaced " +
+      "until a genuinely fresh clone hit it. Fixed by adding the same `npx " +
+      "prisma migrate deploy` step, and verified against a truly fresh " +
+      "database file (not just a fresh directory) that the exact failing " +
+      "query succeeds afterward. A reminder that 'tested in the sandbox' " +
+      "and 'tested from a fresh clone' are not the same claim.",
+  },
 ];
 
 async function main() {
