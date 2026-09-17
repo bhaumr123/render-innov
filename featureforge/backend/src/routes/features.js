@@ -12,6 +12,7 @@ import {
   buildReferenceContext,
   getStreamPromptSource,
   looksLikeDuplicatedRoot,
+  looksLikeCrossStreamWrite,
   readFile,
   writeFile,
   deleteFile,
@@ -164,6 +165,28 @@ async function runPlan(stream, description, userId, { onDelta } = {}) {
       `Claude prefixed ${badPaths.length} path(s) with the "${stream}" stream's own ` +
         `root directory name (e.g. "${badPaths[0]}") — that would double-nest on ` +
         "apply. Rejecting this plan; try /plan again."
+    );
+    err.status = 502;
+    throw err;
+  }
+
+  // Seen live, twice: a local model asked for a fullstack API endpoint
+  // instead rewrote 10-14 files under mobile/ every time — a path that's
+  // syntactically fine (stays inside the fullstack stream's own root) but
+  // belongs to a different stream (mobile nests inside fullstack's root
+  // on disk). Reject the whole plan here, before it's ever shown as a
+  // diff, rather than relying only on writeFile's own hard backstop at
+  // apply time — by then the user's already looking at a misleading diff.
+  const crossStreamPaths = (plan.files || [])
+    .map((f) => ({ path: f.path, owner: looksLikeCrossStreamWrite(stream, f.path) }))
+    .filter((p) => p.owner);
+  if (crossStreamPaths.length) {
+    const { path: examplePath, owner } = crossStreamPaths[0];
+    const err = new Error(
+      `Claude wrote ${crossStreamPaths.length} path(s) that belong to the "${owner}" ` +
+        `stream, not "${stream}" (e.g. "${examplePath}") — even though they're inside ` +
+        `"${stream}"'s own root, that's a different stream's exclusive territory. ` +
+        "Rejecting this plan; try /plan again."
     );
     err.status = 502;
     throw err;

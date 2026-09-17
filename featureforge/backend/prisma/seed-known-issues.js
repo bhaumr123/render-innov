@@ -138,6 +138,34 @@ const ISSUES = [
       "query succeeds afterward. A reminder that 'tested in the sandbox' " +
       "and 'tested from a fresh clone' are not the same claim.",
   },
+  {
+    title: "A stream could silently write into another stream's nested root",
+    area: "streams",
+    description:
+      "A real user's local Ollama model, asked for a fullstack API " +
+      "endpoint (\"GET /api/profile\"), instead rewrote 10-14 files under " +
+      "mobile/ every time — twice in a row — silently gutting real, " +
+      "previously-verified Android app code. resolveSafe() in " +
+      "targetProject.js only ever checked that a write stayed INSIDE the " +
+      "current stream's own root; it never checked whether that path also " +
+      "fell inside a DIFFERENT stream's root. Since mobile's root " +
+      "(tripcraft-app/mobile) nests entirely inside fullstack's " +
+      "(tripcraft-app/), any path under mobile/ is syntactically valid for " +
+      "the fullstack stream too — nothing stopped a plan from writing " +
+      "there, whatever model produced it. Not a model-quality issue: even " +
+      "Claude could in principle do this, it just never happened to. Fixed " +
+      "with looksLikeCrossStreamWrite() — a 'most specific root wins' " +
+      "ownership check (the tricky part: mobile writing to its OWN root is " +
+      "ALSO technically inside fullstack's root, so 'any other root " +
+      "contains it' is the wrong rule; only the deepest matching root " +
+      "should count as the owner). Enforced twice: as a hard backstop in " +
+      "writeFile()/deleteFile() themselves (the one place that's supposed " +
+      "to guarantee this), and as an early rejection in runPlan() so a bad " +
+      "plan never even reaches the diff view. Verified live: the exact " +
+      "malicious write throws and never touches disk, while a legitimate " +
+      "fullstack write and mobile writing its own nested root both still " +
+      "work.",
+  },
 ];
 
 async function main() {

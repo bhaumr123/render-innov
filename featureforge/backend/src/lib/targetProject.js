@@ -195,11 +195,50 @@ export function looksLikeDuplicatedRoot(streamId, relPath) {
   return firstSegment === rootName;
 }
 
+function allStreamEntries() {
+  return [...Object.entries(STREAMS), ...customStreams.entries()];
+}
+
+// Some stream roots nest inside another's — mobile's root
+// (tripcraft-app/mobile) sits entirely inside fullstack's
+// (tripcraft-app/), since a mobile client is genuinely part of "the
+// TripCraft app" on disk. That's fine for *reading* (fullstack's context
+// legitimately includes mobile's files — that's just what's really in its
+// directory tree) but not for *writing*: a path can be safely inside the
+// current stream's own root and still belong to a different stream's
+// exclusive territory. Found live: a local model asked to add a fullstack
+// API endpoint instead "fixed" 10-14 files under mobile/ every time,
+// twice in a row, silently gutting real Android app code — nothing
+// stopped it, because being inside tripcraft-app/ was all resolveSafe()
+// ever checked. Returns the other stream's id if relPath collides with
+// its root, else null.
+// "Falls inside a stream's root" isn't enough on its own to decide who
+// owns a path — when roots nest, a path inside mobile's root is also,
+// trivially, inside fullstack's (fullstack's root is an ancestor
+// directory). The owner is whichever matching root is the MOST SPECIFIC
+// (longest) one — mobile's root is longer/deeper than fullstack's, so it
+// wins for anything under mobile/, exactly as it should. Only reject when
+// that most-specific owner isn't the stream actually doing the writing.
+export function looksLikeCrossStreamWrite(streamId, relPath) {
+  const resolved = path.resolve(getStreamConfig(streamId).root, relPath);
+  let owner = null;
+  let ownerRootLength = -1;
+  for (const [otherId, otherCfg] of allStreamEntries()) {
+    const otherRoot = otherCfg.root;
+    const matches = resolved === otherRoot || resolved.startsWith(otherRoot + path.sep);
+    if (matches && otherRoot.length > ownerRootLength) {
+      owner = otherId;
+      ownerRootLength = otherRoot.length;
+    }
+  }
+  return owner !== null && owner !== streamId ? owner : null;
+}
+
 // Refuse to touch anything outside the stream's own root, even if a caller
-// passes a relative path with ".." in it. This is the one
-// security-sensitive spot in the whole tool, since Claude's output ends up
-// here — and it's also what keeps every stream (built-in or custom) from
-// ever writing into another one's directory by mistake.
+// passes a relative path with ".." in it. This is one of two
+// security-sensitive checks in the whole tool, since Claude's output ends
+// up here — see looksLikeCrossStreamWrite above for the other: staying
+// inside your own root isn't enough when roots can nest.
 function resolveSafe(streamId, relPath) {
   const root = getStreamConfig(streamId).root;
   const resolved = path.resolve(root, relPath);
@@ -223,13 +262,30 @@ export function readFile(streamId, relPath) {
   return fs.readFileSync(full, "utf8");
 }
 
+// The hard backstop, independent of whatever pre-validation a caller (like
+// runPlan()) already did on the whole plan — this module is the one place
+// that's supposed to guarantee a stream can never write outside its own
+// exclusive territory, so it enforces that itself rather than trusting
+// every caller to have checked first.
+function assertOwnTerritory(streamId, relPath) {
+  const collision = looksLikeCrossStreamWrite(streamId, relPath);
+  if (collision) {
+    throw new Error(
+      `Refusing to let the "${streamId}" stream write into "${collision}"'s target ` +
+        `directory: ${relPath}`
+    );
+  }
+}
+
 export function writeFile(streamId, relPath, content) {
+  assertOwnTerritory(streamId, relPath);
   const full = resolveSafe(streamId, relPath);
   fs.mkdirSync(path.dirname(full), { recursive: true });
   fs.writeFileSync(full, content, "utf8");
 }
 
 export function deleteFile(streamId, relPath) {
+  assertOwnTerritory(streamId, relPath);
   const full = resolveSafe(streamId, relPath);
   if (fs.existsSync(full)) fs.rmSync(full);
 }

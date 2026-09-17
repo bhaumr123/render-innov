@@ -522,4 +522,30 @@ like "add a trip request form" through FeatureForge.
     feature request and returning working code couldn't be exercised
     end-to-end here. On a normal machine with real internet access,
     `ollama pull` just works and that script will produce a real plan.
+  - **Cross-stream write isolation** — the most significant bug this
+    project has found, and the first one caught by a real user rather
+    than sandbox testing: a real user's local Ollama model, asked for a
+    fullstack API endpoint, instead rewrote 10-14 files under `mobile/`
+    — twice in a row — silently gutting real Android app code that had
+    already been verified working. Root cause: `mobile`'s root
+    (`tripcraft-app/mobile`) nests entirely inside `fullstack`'s
+    (`tripcraft-app/`), and `resolveSafe()` only ever checked that a
+    write stayed inside the *current* stream's root — never that it
+    also stayed outside every *other* stream's root. Not a model-
+    quality issue at heart: nothing in the code would have stopped
+    Claude from doing the same thing, it just never happened to.
+    Fixed with `looksLikeCrossStreamWrite()` — a "most specific root
+    wins" ownership check (the subtlety: `mobile` writing to its own
+    root is *also*, trivially, inside `fullstack`'s root, so "any other
+    root contains it" is the wrong rule; only the deepest/longest
+    matching root should count as the true owner). Enforced in two
+    places: as a hard backstop inside `writeFile()`/`deleteFile()`
+    themselves — the one module that's supposed to guarantee this —
+    and as an early rejection in `runPlan()`, mirroring the existing
+    `looksLikeDuplicatedRoot` check, so a bad plan is rejected before
+    it's ever shown as a misleading diff. 5 new unit tests cover the
+    asymmetric case directly. Verified live: the exact malicious write
+    throws and is confirmed to never touch disk, while a legitimate
+    fullstack write and mobile writing its own nested root both still
+    work correctly.
   - Still open: run tests before applying, undo/rollback, SQLite → Postgres.
